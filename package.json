@@ -4,7 +4,10 @@
   "description": "结伴出行 - 和伙伴一起记录去过的城市",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js",
+    "dev:web": "npm --prefix frontend run dev",
+    "build:web": "npm --prefix frontend run build"
   },
   "license": "MIT",
   "dependencies": {

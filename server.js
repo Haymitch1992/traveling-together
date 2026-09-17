@@ -12,7 +12,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// 前端：优先 Vue 构建产物 frontend/dist，未构建时回退旧 public/
+const distDir = path.join(__dirname, 'frontend', 'dist');
+const webDir = fs.existsSync(distDir) ? distDir : path.join(__dirname, 'public');
+app.use(express.static(webDir));
 app.use('/uploads', auth.requireAuth, express.static(path.join(__dirname, 'data', 'uploads')));
 app.use('/api', tripsRouter);
 
@@ -295,6 +299,12 @@ app.get('/api/summary/yearly', auth.requireAuth, (req, res) => {
     oneWayKm, totalKm: Math.round(oneWayKm * 2 * 10) / 10,
     cities: cityList, trips: tripList,
   });
+});
+
+// SPA fallback：非 API/上传资源的 GET 一律回 index.html（Vue history 路由）
+app.get(/^(?!\/(api|uploads)).*/, (req, res) => {
+  if (webDir === distDir) return res.sendFile(path.join(distDir, 'index.html'));
+  res.status(404).end();
 });
 
 // 兜底错误处理

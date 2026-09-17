@@ -1,13 +1,15 @@
 # 结伴出行
 
-和伙伴一起，记录走过的城市。全栈 Web 应用：Node.js + Express + SQLite 后端，高德地图前端，支持多用户与游客模式。
+和伙伴一起，记录走过的城市。全栈 Web 应用：Node.js + Express + SQLite 后端，**Vue 3 + Element Plus + Vite** 前端（`frontend/`），高德地图，支持多用户与游客模式。
 
 ## 快速开始
 
-1. 安装依赖
+1. 安装依赖并构建前端
 
    ```bash
    npm install
+   npm --prefix frontend install
+   npm run build:web    # 构建前端到 frontend/dist
    ```
 
 2. 填入高德 Key
@@ -32,6 +34,15 @@
    ```
 
 4. 浏览器访问 <http://localhost:3000>，自动跳转到登录页
+
+## 前端开发（热更新）
+
+```bash
+npm run dev          # 后端 :3000
+npm run dev:web      # Vite 开发服务器 :5173（自动代理 /api 和 /uploads 到 3000）
+```
+
+改动前端后重新构建：`npm run build:web`（生产模式由后端直接托管 `frontend/dist`）。
 
 ## 登录模式
 
