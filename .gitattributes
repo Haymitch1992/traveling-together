@@ -1,0 +1,2 @@
+# 入口脚本必须保持 LF，否则 Linux 容器内无法执行
+docker-entrypoint.sh text eol=lf

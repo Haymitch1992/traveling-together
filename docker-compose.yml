@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    container_name: traveling-together
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data        # SQLite 数据库 + 照片持久化
+      # 方式一：挂载本地配置文件（二选一）
+      - ./config.json:/app/config.json:ro
+    # 方式二：环境变量（与 config.json 二选一，优先级更高）
+    # environment:
+    #   AMAP_KEY: ""
+    #   AMAP_SECURITY_CODE: ""
+    #   DEEPSEEK_KEY: ""
+    #   SMTP_USER: ""
+    #   SMTP_PASS: ""
+    #   SMTP_FROM: ""
+    restart: unless-stopped

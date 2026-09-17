@@ -1,0 +1,8 @@
+node_modules
+.git
+config.json
+.env
+data/travel.db
+data/*.bak
+data/uploads
+*.log

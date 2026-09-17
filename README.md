@@ -91,3 +91,22 @@
 | POST/PUT/DELETE | /api/trips/:id/expenses(/:eid) | 花费记录 |
 | POST/PUT/DELETE | /api/trips/:id/itinerary(/:iid) | 每日行程 |
 | POST/DELETE | /api/trips/:id/photos(/:pid) | 照片上传（最多 9 张/次，≤10MB）/ 删除 |
+
+## Docker 部署（腾讯云等云服务器）
+
+1. 上传代码到服务器（git clone 或 scp），并把本地的 `config.json`（含各 Key）和 `data/travel.db`（已有数据，可选）一并放到项目目录
+
+2. 构建并启动：
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. 访问 `http://服务器IP:3000`
+
+说明：
+
+- **数据持久化**：`./data` 目录挂载进容器，数据库和照片都在宿主机上，重建容器不丢数据；`data/cities.json` 不存在时容器启动会自动播种
+- **配置方式**：默认挂载 `config.json`（只读）；也可以改用环境变量（`AMAP_KEY`、`DEEPSEEK_KEY`、`SMTP_USER`、`SMTP_PASS` 等，见 docker-compose.yml 注释），环境变量优先级更高
+- **端口**：腾讯云控制台的安全组需放行 3000 端口；生产环境建议前面套 Nginx + HTTPS
+- 常用命令：`docker compose logs -f` 看日志、`docker compose restart` 重启、`docker compose down && docker compose up -d --build` 更新代码后重建
