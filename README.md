@@ -102,11 +102,11 @@
    docker compose up -d --build
    ```
 
-3. 访问 `http://服务器IP:3000`
+3. 访问 `http://服务器IP:8300`
 
 说明：
 
+- **端口**：默认对外 **8300**（容器内部固定 3000）；如与服务器上其他服务冲突，`APP_PORT=8080 docker compose up -d` 即可换端口；腾讯云安全组需放行对应端口
 - **数据持久化**：`./data` 目录挂载进容器，数据库和照片都在宿主机上，重建容器不丢数据；`data/cities.json` 不存在时容器启动会自动播种
 - **配置方式**：默认挂载 `config.json`（只读）；也可以改用环境变量（`AMAP_KEY`、`DEEPSEEK_KEY`、`SMTP_USER`、`SMTP_PASS` 等，见 docker-compose.yml 注释），环境变量优先级更高
-- **端口**：腾讯云控制台的安全组需放行 3000 端口；生产环境建议前面套 Nginx + HTTPS
 - 常用命令：`docker compose logs -f` 看日志、`docker compose restart` 重启、`docker compose down && docker compose up -d --build` 更新代码后重建

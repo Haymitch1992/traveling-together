@@ -3,7 +3,7 @@ services:
     build: .
     container_name: traveling-together
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-8300}:3000"   # 对外端口用 APP_PORT 环境变量可调，默认 8300 避开冲突
     volumes:
       - ./data:/app/data        # SQLite 数据库 + 照片持久化
       # 方式一：挂载本地配置文件（二选一）
