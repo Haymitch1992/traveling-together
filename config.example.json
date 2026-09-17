@@ -1,0 +1,11 @@
+{
+  "amapKey": "",
+  "amapSecurityCode": "",
+  "deepseekKey": "",
+  "deepseekModel": "deepseek-chat",
+  "smtpHost": "smtp.163.com",
+  "smtpPort": 465,
+  "smtpUser": "",
+  "smtpPass": "",
+  "smtpFrom": ""
+}

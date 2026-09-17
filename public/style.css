@@ -1,0 +1,872 @@
+/* 旅行地图样式 */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #f59e0b;
+  --primary-dark: #d97706;
+  --danger: #ef4444;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #1e293b;
+  --text-sub: #64748b;
+  --border: #e2e8f0;
+  --shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --radius: 12px;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.hidden { display: none !important; }
+
+/* ---------- 布局 ---------- */
+.layout { display: flex; height: 100vh; }
+
+#map-container { flex: 1; position: relative; background: #e5e7eb; }
+
+.map-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-sub); font-size: 15px;
+}
+
+/* ---------- 提示条 / Toast ---------- */
+.key-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: #fef3c7; color: #92400e;
+  padding: 10px 16px; font-size: 14px; text-align: center;
+  border-bottom: 1px solid #fde68a;
+}
+
+.toast {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 1100;
+  background: #1e293b; color: #fff;
+  padding: 10px 20px; border-radius: 8px; font-size: 14px;
+  box-shadow: var(--shadow);
+}
+.toast.toast-err { background: var(--danger); }
+
+/* ---------- 面板 ---------- */
+.panel {
+  width: 360px; height: 100%;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  padding: 20px 16px;
+  overflow-y: auto;
+  transition: margin-right 0.25s ease;
+}
+.panel.collapsed { margin-right: -360px; }
+
+.panel-toggle {
+  position: absolute; top: 12px; right: 372px; z-index: 900;
+  width: 36px; height: 36px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); cursor: pointer; font-size: 16px;
+  box-shadow: var(--shadow);
+  transition: right 0.25s ease;
+}
+.layout.panel-collapsed .panel-toggle { right: 12px; }
+
+.panel-header h1 { font-size: 22px; }
+.panel-header .subtitle { font-size: 13px; color: var(--text-sub); margin-top: 4px; }
+
+/* ---------- 统计卡片 ---------- */
+.stats { display: flex; gap: 10px; margin: 16px 0; }
+.stat-card {
+  flex: 1; background: var(--card); border-radius: var(--radius);
+  padding: 14px 8px; text-align: center; box-shadow: var(--shadow);
+}
+.stat-num { font-size: 24px; font-weight: 700; color: var(--primary-dark); }
+.stat-label { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+
+/* ---------- 搜索 ---------- */
+.search-box { position: relative; margin-bottom: 16px; }
+#search-input {
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 14px; outline: none; background: var(--card);
+}
+#search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+
+.search-results {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 500;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  list-style: none; max-height: 260px; overflow-y: auto;
+}
+.search-results li { padding: 10px 14px; font-size: 14px; cursor: pointer; }
+.search-results li:hover { background: #fef9c3; }
+.search-results em { font-style: normal; color: var(--text-sub); font-size: 13px; }
+.search-country { color: var(--text-sub); font-size: 13px; }
+.search-none { color: var(--text-sub); cursor: default !important; }
+
+
+/* ---------- 按钮 ---------- */
+.btn {
+  border: none; border-radius: 8px; cursor: pointer;
+  font-size: 14px; padding: 8px 16px;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-ghost { background: transparent; color: var(--text-sub); }
+.btn-ghost:hover { background: #f1f5f9; }
+.btn-small { font-size: 13px; padding: 6px 12px; }
+.btn-danger { background: #fee2e2; color: var(--danger); }
+.btn-danger:hover { background: #fecaca; }
+.btn-icon {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-sub); font-size: 13px; padding: 2px 6px; border-radius: 4px;
+}
+.btn-icon:hover { background: #f1f5f9; color: var(--text); }
+
+/* ---------- 空状态 ---------- */
+.empty-state {
+  text-align: center; color: var(--text-sub);
+  padding: 40px 0; font-size: 14px;
+}
+
+/* ---------- 城市列表 ---------- */
+.city-list { list-style: none; }
+.city-item {
+  background: var(--card); border-radius: var(--radius);
+  margin-bottom: 10px; box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.city-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; cursor: pointer;
+}
+.city-head:hover { background: #fffbeb; }
+.city-badge {
+  min-width: 26px; height: 26px; border-radius: 13px;
+  background: var(--primary); color: #fff;
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 6px; flex-shrink: 0;
+}
+.city-name { font-size: 15px; font-weight: 600; flex: 1; }
+.city-name em { font-style: normal; font-weight: 400; color: var(--text-sub); font-size: 13px; }
+.city-country { color: var(--text-sub); font-size: 13px; flex-shrink: 0; }
+.city-chevron { color: var(--text-sub); font-size: 12px; transition: transform 0.2s; }
+.city-item.expanded .city-chevron { transform: rotate(180deg); }
+
+.city-detail { display: none; border-top: 1px solid var(--border); padding: 10px 14px; }
+.city-item.expanded .city-detail { display: block; }
+
+.visit-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; font-size: 13px;
+}
+.visit-date { color: var(--text); font-weight: 500; flex-shrink: 0; }
+.visit-note { color: var(--text-sub); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visit-ops { flex-shrink: 0; }
+.visit-row .edit-date, .visit-row .edit-note {
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+}
+.visit-row .edit-note { flex: 1; }
+.visit-none { color: var(--text-sub); font-size: 13px; padding: 6px 0; }
+
+.city-detail-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* ---------- 地图信息窗 ---------- */
+.info-win { min-width: 180px; }
+.info-title { font-size: 15px; font-weight: 700; }
+.info-title span { font-weight: 400; color: var(--text-sub); font-size: 13px; }
+.info-sub { color: var(--text-sub); font-size: 13px; margin: 4px 0 8px; }
+.info-history { list-style: none; max-height: 140px; overflow-y: auto; }
+.info-history li { font-size: 13px; padding: 3px 0; border-top: 1px dashed var(--border); }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  #map-container { flex: 1; min-height: 45vh; }
+  .panel {
+    width: 100%; height: 55vh;
+    border-left: none; border-top: 1px solid var(--border);
+  }
+  .panel.collapsed { margin-right: 0; margin-bottom: calc(-55vh + 40px); }
+  .panel-toggle { top: auto; bottom: calc(55vh + 8px); right: 12px; }
+}
+
+/* ---------- 登录页（卡通动物结伴出行主题） ---------- */
+.login-page {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 24px 0;
+  background: linear-gradient(180deg, #8FD3F4 0%, #C9E9F6 45%, #FDF3D8 100%);
+}
+
+.login-card {
+  width: 380px; max-width: calc(100vw - 32px);
+  background: #FFFDF7;
+  border: 3px solid #ffffff; border-radius: 26px;
+  box-shadow: 0 20px 50px rgba(74, 64, 57, 0.18);
+  overflow: hidden;
+}
+
+.login-scene {
+  display: block; width: 100%; height: auto;
+  background: linear-gradient(180deg, #BEE6F7 0%, #E8F6FB 62%, #D9EDCF 100%);
+}
+
+/* 动效：小动物蹦跶 + 云朵漂移（reduced-motion 下静止） */
+@keyframes animal-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.animal { animation: animal-bob 2.4s ease-in-out infinite; }
+.animal-2 { animation-delay: 0.35s; }
+.animal-3 { animation-delay: 0.7s; }
+.animal-4 { animation-delay: 1.05s; }
+
+@keyframes cloud-drift {
+  from { transform: translateX(-90px); }
+  to { transform: translateX(470px); }
+}
+.cloud { animation: cloud-drift 38s linear infinite; }
+.cloud-b { animation-duration: 55s; animation-delay: -18s; }
+
+@keyframes sun-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+.sun-rays { animation: sun-spin 60s linear infinite; transform-origin: 0 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animal, .cloud, .sun-rays { animation: none; }
+}
+
+.login-title {
+  font-family: 'ZCOOL KuaiLe', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 34px; text-align: center; color: #4A4039;
+  letter-spacing: 4px; margin-top: 14px;
+}
+.login-subtitle { text-align: center; color: #8A7F72; font-size: 14px; margin: 6px 0 16px; }
+
+.login-body { padding: 0 32px 26px; }
+
+.login-error {
+  background: #FDE8E4; color: #C2432B;
+  border-radius: 12px; padding: 10px 14px;
+  font-size: 13px; margin-bottom: 14px;
+}
+
+#auth-form input {
+  display: block; width: 100%; margin-bottom: 12px;
+  padding: 11px 16px; border: 2px solid #EFE6D8;
+  border-radius: 999px; font-size: 14px; outline: none;
+  background: #ffffff; color: #4A4039;
+}
+#auth-form input::placeholder { color: #B9AE9F; }
+#auth-form input:focus { border-color: #F4A261; box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.2); }
+
+.btn-block { display: block; width: 100%; padding: 11px 0; font-size: 15px; }
+
+.login-page .btn-primary {
+  background: #E76F51; border-radius: 999px; font-weight: 700; letter-spacing: 2px;
+}
+.login-page .btn-primary:hover { background: #D95F41; }
+
+.login-switch { text-align: center; font-size: 13px; color: #8A7F72; margin-top: 14px; }
+.login-switch a { color: #E76F51; text-decoration: none; font-weight: 600; }
+.login-switch a:hover { text-decoration: underline; }
+
+.login-divider {
+  display: flex; align-items: center; gap: 12px;
+  color: #B9AE9F; font-size: 13px; margin: 18px 0;
+}
+.login-divider::before, .login-divider::after {
+  content: ''; flex: 1; height: 1px; background: #EFE6D8;
+}
+
+.btn-guest {
+  background: #7FB069; color: #ffffff;
+  border: none; border-radius: 999px; font-weight: 700; letter-spacing: 1px;
+}
+.btn-guest:hover { background: #6C9C57; }
+
+.guest-hint { text-align: center; color: #B9AE9F; font-size: 12px; margin-top: 10px; }
+
+/* ---------- 用户信息 / 游客横幅 ---------- */
+.panel-header-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.user-info { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.user-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: #fffbeb; border: 1px solid #fde68a;
+  border-radius: 999px; padding: 3px 12px 3px 3px;
+}
+.user-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: linear-gradient(135deg, #fbbf24, #ea580c);
+  color: #fff; font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.current-user { font-size: 13px; font-weight: 600; color: #92400e; }
+
+.logout-btn {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-sub); font-size: 12px;
+  padding: 4px 8px; border-radius: 6px;
+}
+.logout-btn:hover { background: #f1f5f9; color: var(--danger); }
+
+.guest-banner {
+  margin-top: 10px;
+  background: #fef3c7; color: #92400e;
+  border: 1px solid #fde68a; border-radius: 8px;
+  padding: 8px 12px; font-size: 13px;
+}
+
+/* ---------- 旅行项目页通用 ---------- */
+.trips-page, .trip-page { background: var(--bg); min-height: 100vh; }
+
+.top-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--card); border-bottom: 1px solid var(--border);
+  padding: 12px 24px; position: sticky; top: 0; z-index: 800;
+}
+.top-nav-left { display: flex; align-items: center; gap: 14px; }
+.nav-link { color: var(--primary-dark); text-decoration: none; font-size: 14px; }
+.nav-link:hover { text-decoration: underline; }
+.nav-title { font-size: 17px; font-weight: 700; }
+
+.guest-banner-top { margin: 12px 24px 0; }
+
+.trips-main { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+
+.card {
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 16px;
+}
+.card-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.card-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.card-title-row .card-title { margin-bottom: 0; }
+
+.home-row { display: flex; align-items: center; gap: 10px; }
+.home-name { font-size: 15px; font-weight: 600; }
+.search-box-inline { flex: 1; margin-bottom: 0; }
+
+/* ---------- 发起旅行表单 ---------- */
+.create-form { margin-top: 8px; }
+.form-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 14px;
+}
+.form-grid label, .dest-name-label {
+  display: block; font-size: 13px; color: var(--text-sub);
+}
+.form-grid input, .form-grid select, .dest-name-label input {
+  display: block; width: 100%; margin-top: 4px;
+  padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 14px; outline: none; background: var(--card);
+}
+.form-grid input:focus, .form-grid select:focus, .dest-name-label input:focus {
+  border-color: var(--primary); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+.form-block { margin-bottom: 14px; }
+.form-label { font-size: 13px; color: var(--text-sub); margin-bottom: 6px; }
+.form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.tag-input {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+  background: var(--card);
+}
+.tag-input input { border: none; outline: none; flex: 1; min-width: 120px; font-size: 14px; padding: 4px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #fffbeb; border: 1px solid #fde68a; color: var(--primary-dark);
+  border-radius: 14px; padding: 3px 10px; font-size: 13px;
+}
+.tag-large { font-size: 14px; padding: 5px 14px; }
+.tag-x {
+  border: none; background: transparent; cursor: pointer;
+  color: inherit; font-size: 14px; padding: 0 2px; line-height: 1;
+}
+.member-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+
+.dest-picker { display: flex; gap: 14px; }
+.dest-side { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
+.dest-side .search-box { margin-bottom: 0; }
+.picker-map {
+  flex: 1; height: 320px; border-radius: 10px;
+  border: 1px solid var(--border); background: #e5e7eb; overflow: hidden;
+}
+.dest-coord { font-size: 13px; color: var(--text-sub); }
+.distance-hint { font-size: 13px; color: var(--primary-dark); min-height: 18px; }
+
+/* ---------- 项目卡片 ---------- */
+.trips-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.trip-card { display: block; text-decoration: none; color: inherit; margin-bottom: 0; transition: transform 0.15s, box-shadow 0.15s; }
+.trip-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12); }
+.trip-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.trip-card-title { font-size: 16px; font-weight: 700; }
+.trip-card-dest { color: var(--primary-dark); font-size: 14px; font-weight: 600; flex-shrink: 0; }
+.trip-card-meta { color: var(--text-sub); font-size: 13px; margin-top: 6px; }
+
+/* ---------- 详情页 ---------- */
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.info-item span { display: block; font-size: 12px; color: var(--text-sub); }
+.info-item strong { font-size: 15px; }
+
+.inline-add { display: flex; gap: 8px; }
+.inline-add input {
+  flex: 1; max-width: 220px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none;
+}
+
+.inline-add-form {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+  padding-top: 12px; border-top: 1px dashed var(--border);
+}
+.inline-add-form input, .inline-add-form select {
+  padding: 7px 10px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 13px; outline: none; background: var(--card);
+}
+.inline-add-form input[type="number"] { width: 100px; }
+.inline-add-form input[type="text"] { flex: 1; min-width: 140px; }
+
+.settle-summary { display: flex; gap: 10px; margin-bottom: 14px; }
+.settle-summary .stat-card { flex: 1; box-shadow: none; border: 1px solid var(--border); }
+.settle-summary .stat-num { font-size: 18px; }
+.settle-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 12px; }
+.settle-table th, .settle-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.settle-table th { color: var(--text-sub); font-weight: 500; font-size: 13px; }
+.settle-table .pos { color: #16a34a; font-weight: 600; }
+.settle-table .neg { color: var(--danger); font-weight: 600; }
+.settle-transfers ul { list-style: none; }
+.settle-transfers li { font-size: 14px; padding: 4px 0; }
+
+.expense-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 14px;
+}
+.expense-payer { font-weight: 600; flex-shrink: 0; }
+.expense-amount { color: var(--primary-dark); font-weight: 700; flex-shrink: 0; }
+.expense-cat {
+  background: #f1f5f9; border-radius: 10px; padding: 1px 8px;
+  font-size: 12px; color: var(--text-sub); flex-shrink: 0;
+}
+.expense-note { color: var(--text-sub); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expense-date { color: var(--text-sub); font-size: 13px; flex-shrink: 0; }
+
+.day-block { margin-bottom: 12px; }
+.day-title { font-size: 14px; font-weight: 700; color: var(--primary-dark); margin-bottom: 4px; }
+.it-row { display: flex; align-items: center; gap: 8px; padding: 5px 0 5px 14px; font-size: 14px; }
+.it-content { flex: 1; }
+
+/* ---------- 照片墙 ---------- */
+.photo-wall {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.photo-cell {
+  position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+  background: #f1f5f9; cursor: zoom-in;
+}
+.photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
+.photo-cell:hover img { transform: scale(1.04); }
+.photo-del {
+  position: absolute; top: 6px; right: 6px;
+  width: 24px; height: 24px; border-radius: 50%;
+  border: none; background: rgba(0, 0, 0, 0.55); color: #fff;
+  cursor: pointer; font-size: 14px; line-height: 1; display: none;
+}
+.photo-cell:hover .photo-del { display: block; }
+
+.lightbox {
+  position: fixed; inset: 0; z-index: 1200;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex; align-items: center; justify-content: center;
+}
+.lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
+.lightbox-close {
+  position: absolute; top: 18px; right: 24px;
+  background: transparent; border: none; color: #fff;
+  font-size: 34px; cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .dest-picker { flex-direction: column; }
+  .dest-side { width: 100%; }
+  .picker-map { height: 260px; }
+  .top-nav { padding: 10px 14px; }
+}
+
+/* ---------- 首页旅行项目区块 ---------- */
+.section-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+
+/* ---------- 年度汇总 ---------- */
+.year-summary {
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 14px;
+}
+.year-summary .section-title { margin-bottom: 0; }
+.year-summary-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.year-select {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px 8px; font-size: 13px; background: var(--card); outline: none;
+}
+.year-nums { display: flex; gap: 10px; }
+.year-num {
+  flex: 1; text-align: center;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+  padding: 10px 4px;
+}
+.year-num strong { display: block; font-size: 22px; color: var(--primary-dark); }
+.year-num span { font-size: 12px; color: var(--text-sub); }
+.year-sub { font-size: 12px; color: var(--text-sub); margin-top: 8px; }
+.ys-toggle { padding: 4px 0; font-size: 13px; }
+.year-detail { margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.ys-detail-title { font-size: 13px; font-weight: 700; color: var(--primary-dark); margin: 8px 0 4px; }
+.ys-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; padding: 4px 0;
+}
+.ys-row em { font-style: normal; color: var(--text-sub); font-size: 12px; }
+.ys-row span:last-child { color: var(--text-sub); }
+.ys-trip-link { color: var(--text); text-decoration: none; }
+.ys-trip-link:hover { color: var(--primary-dark); text-decoration: underline; }
+
+/* ---------- 年份筛选 ---------- */
+
+/* ---------- 地图卡通动物标记 ---------- */
+.map-animal {
+  position: relative; cursor: pointer; transform-origin: bottom center;
+  filter: drop-shadow(1px 3px 3px rgba(74, 64, 57, 0.35));
+  transition: transform 0.15s ease;
+}
+.map-animal:hover { transform: scale(1.15) !important; }
+.map-animal-badge {
+  position: absolute; top: -4px; right: -6px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; border: 1.5px solid #fff;
+  color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  box-sizing: border-box;
+}
+
+/* ---------- 创建行程悬浮按钮 ---------- */
+.fab {
+  position: fixed; right: 392px; bottom: 32px; z-index: 900;
+  width: 54px; height: 54px; border-radius: 50%;
+  background: var(--primary); color: #fff;
+  font-size: 30px; font-weight: 400; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  text-decoration: none; padding-bottom: 3px;
+  box-shadow: 0 6px 16px rgba(217, 119, 6, 0.4);
+  transition: transform 0.15s ease, background 0.15s ease, right 0.25s ease;
+}
+.fab:hover { background: var(--primary-dark); transform: scale(1.08); }
+.layout.panel-collapsed .fab { right: 32px; }
+
+@media (max-width: 768px) {
+  .fab { right: 16px; bottom: calc(55vh + 16px); }
+  .layout.panel-collapsed .fab { bottom: 56px; }
+}
+
+/* ---------- 旅行项目页 · 绘本风美化 ---------- */
+/* 渐变挂 html：其他页面 body 自带背景会盖住它，互不影响 */
+html {
+  background: linear-gradient(180deg, #E7F4FC 0%, #FDF6E3 60%, #FDF3D8 100%) fixed;
+}
+.trips-page {
+  background: transparent;
+}
+
+.trips-page .top-nav {
+  background: rgba(255, 253, 247, 0.88);
+  backdrop-filter: blur(8px);
+  border-bottom: 2px solid #ffffff;
+  box-shadow: 0 4px 16px rgba(74, 64, 57, 0.06);
+}
+.trips-page .nav-title {
+  font-size: 19px; font-weight: 700; color: #4A4039;
+}
+.trips-page .nav-link { color: #E76F51; font-weight: 600; }
+
+.trips-page .card {
+  background: #FFFDF7;
+  border: 2px solid #ffffff; border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(74, 64, 57, 0.08);
+  padding: 22px 24px;
+}
+.trips-page .card-title {
+  font-size: 19px; font-weight: 700; color: #4A4039;
+}
+
+/* 出发城市 */
+.trips-page .home-name {
+  font-size: 17px; font-weight: 700; color: #D95F41;
+}
+.trips-page .home-row { min-height: 38px; }
+
+/* 发起旅行按钮 */
+.trips-page #create-toggle {
+  background: #E76F51; border-radius: 999px;
+  padding: 10px 22px; font-size: 14px; font-weight: 700; letter-spacing: 1px;
+  box-shadow: 0 4px 12px rgba(231, 111, 81, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.trips-page #create-toggle:hover { background: #D95F41; transform: scale(1.05); }
+
+/* 表单 */
+.trips-page .create-form {
+  background: #FAF5EA; border: 2px dashed #EFE0C3;
+  border-radius: 16px; padding: 18px; margin-top: 14px;
+}
+.trips-page .form-grid input,
+.trips-page .form-grid select {
+  border: 2px solid #EFE6D8; border-radius: 12px;
+  background: #ffffff; color: #4A4039;
+  padding: 9px 12px;
+}
+.trips-page .form-grid input:focus,
+.trips-page .form-grid select:focus {
+  border-color: #F4A261; box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.2);
+}
+.trips-page .form-grid label, .trips-page .form-label {
+  color: #6E6255; font-weight: 600;
+}
+
+/* 同行人标签 */
+.trips-page .tag-input {
+  border: 2px solid #EFE6D8; border-radius: 12px; background: #ffffff;
+  padding: 8px 10px;
+}
+.trips-page .tag-input:focus-within { border-color: #F4A261; box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.2); }
+.trips-page .tag {
+  background: #E8F4FD; border-color: #BFE0F5; color: #2F6DA3;
+  border-radius: 999px; padding: 4px 12px; font-weight: 600;
+}
+.trips-page .tag:nth-child(3n+2) { background: #E9F6E3; border-color: #C4E3B4; color: #4E7A36; }
+.trips-page .tag:nth-child(3n+3) { background: #FDEFD9; border-color: #F5D9A8; color: #A5700B; }
+
+/* 目的地选点 */
+.trips-page .dest-side {
+  background: #ffffff; border: 2px solid #EFE6D8;
+  border-radius: 14px; padding: 14px;
+}
+.trips-page .dest-side .search-box input {
+  border: 2px solid #EFE6D8; border-radius: 999px;
+  padding: 10px 16px;
+}
+.trips-page .dest-side .search-box input:focus { border-color: #F4A261; box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.2); }
+.trips-page .picker-map {
+  border: 3px solid #ffffff; border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(74, 64, 57, 0.12);
+}
+.trips-page .distance-hint {
+  background: #E9F6E3; border-radius: 10px;
+  padding: 8px 12px; color: #4E7A36; font-weight: 600;
+}
+.trips-page .distance-hint:empty { display: none; }
+.trips-page .dest-coord { color: #B9AE9F; }
+
+/* 表单按钮 */
+.trips-page .form-actions .btn-primary {
+  background: #E76F51; border-radius: 999px;
+  padding: 9px 24px; font-weight: 700; letter-spacing: 1px;
+  box-shadow: 0 4px 12px rgba(231, 111, 81, 0.3);
+}
+.trips-page .form-actions .btn-primary:hover { background: #D95F41; }
+.trips-page .form-actions .btn-ghost { border-radius: 999px; color: #8A7F72; }
+
+/* 项目卡片 */
+.trips-page .trip-card {
+  background: #FFFDF7; border: 2px solid #ffffff; border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(74, 64, 57, 0.07);
+  position: relative; overflow: hidden;
+}
+.trips-page .trip-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  background: linear-gradient(180deg, #F4A261, #E76F51);
+}
+.trips-page .trip-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(74, 64, 57, 0.13); }
+.trips-page .trip-card-title {
+  font-size: 17px; font-weight: 700; color: #4A4039;
+}
+.trips-page .trip-card-dest {
+  background: #E8F4FD; color: #2F6DA3;
+  border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 700;
+}
+.trips-page .trip-card-meta { color: #6E6255; }
+
+/* ---------- AI 生成行程预览 ---------- */
+.ai-preview {
+  background: #FAF5EA; border: 2px dashed #EFE0C3;
+  border-radius: 14px; padding: 14px 16px; margin-bottom: 14px;
+}
+.ai-preview-title {
+  font-size: 13px; font-weight: 700; color: #A5700B; margin-bottom: 8px;
+}
+.ai-row { font-size: 14px; color: var(--text); padding: 4px 0 4px 14px; }
+.ai-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed #EFE0C3;
+}
+
+/* ---------- 发起旅行弹窗 ---------- */
+.modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-mask {
+  position: absolute; inset: 0;
+  background: rgba(74, 64, 57, 0.45);
+  backdrop-filter: blur(2px);
+}
+.modal-dialog {
+  position: relative;
+  width: 880px; max-width: 100%; max-height: 90vh; overflow-y: auto;
+  background: #FFFDF7; border: 2px solid #ffffff; border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(74, 64, 57, 0.3);
+  padding: 20px 24px;
+  animation: modal-in 0.2s ease;
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-dialog { animation: none; }
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.modal-title {
+  font-size: 19px; font-weight: 700; color: #4A4039;
+}
+.modal-close {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: none; background: #FAF5EA; color: #8A7F72;
+  font-size: 18px; cursor: pointer; line-height: 1;
+}
+.modal-close:hover { background: #FDE8E4; color: #C2432B; }
+
+.modal-dialog .create-form { margin-top: 0; }
+
+@media (max-width: 768px) {
+  .modal { padding: 10px; align-items: flex-start; }
+  .modal-dialog { max-height: calc(100vh - 20px); margin-top: 0; }
+}
+
+/* ---------- 项目列表头部筛选 ---------- */
+.list-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; padding: 0 4px;
+}
+.list-title { font-size: 16px; font-weight: 700; color: #4A4039; }
+.trips-page .year-select {
+  border: 2px solid #EFE6D8; border-radius: 999px;
+  padding: 6px 14px; background: #FFFDF7; color: #4A4039;
+  font-size: 13px; font-weight: 600;
+}
+
+/* ---------- 同行人榜单 ---------- */
+.companion-list { display: flex; flex-direction: column; }
+.companion-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 4px; border-bottom: 1px dashed #EFE6D8;
+  font-size: 14px;
+}
+.companion-row:last-child { border-bottom: none; }
+.companion-rank { width: 28px; text-align: center; font-size: 15px; color: #8A7F72; font-weight: 700; }
+.companion-name { flex: 1; font-weight: 600; color: #4A4039; }
+.companion-count {
+  background: #FDEFD9; color: #A5700B;
+  border-radius: 999px; padding: 2px 10px;
+  font-size: 12px; font-weight: 700;
+}
+
+/* 发起弹窗：常客快捷选择 */
+.member-quick {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  margin-bottom: 8px;
+}
+.quick-label { font-size: 12px; color: #8A7F72; }
+.quick-chip {
+  border: 1.5px dashed #C9D9E8; background: #F4FAFE; color: #2F6DA3;
+  border-radius: 999px; padding: 4px 12px;
+  font-size: 13px; cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.quick-chip em { font-style: normal; font-size: 11px; color: #7FA8C9; margin-left: 2px; }
+.quick-chip:hover { background: #E8F4FD; transform: scale(1.05); border-style: solid; }
+
+/* 榜单展开/收起 */
+.companion-toggle { margin-top: 6px; font-size: 13px; padding: 4px 8px; }
+
+/* ---------- 省市分组 ---------- */
+.region-group { margin-bottom: 10px; }
+.region-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; cursor: pointer;
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.region-head:hover { background: #fffbeb; }
+.region-name { font-size: 15px; font-weight: 700; flex: 0 1 auto; }
+.region-sub { color: var(--text-sub); font-size: 12px; flex: 1; }
+.region-cities {
+  list-style: none; padding-left: 14px; margin-top: 8px;
+  border-left: 2px dashed var(--border); margin-left: 14px;
+}
+.region-cities .city-item { margin-bottom: 8px; }
+
+/* ---------- 年度明细弹窗 ---------- */
+.modal-sm { width: 520px; }
+.modal-sm .year-detail { margin-top: 0; border-top: none; padding-top: 0; }
+
+/* ---------- 年度明细表格 ---------- */
+.ys-table {
+  width: 100%; font-size: 14px;
+  border-collapse: separate; border-spacing: 0;
+  border: 2px solid #EFE6D8; border-radius: 14px;
+  background: #ffffff; overflow: hidden;
+}
+.ys-table th, .ys-table td { padding: 10px 14px; text-align: left; }
+.ys-table thead th {
+  background: #FAF5EA; color: #A5700B;
+  font-size: 12px; font-weight: 700; letter-spacing: 1px;
+  border-bottom: 2px solid #EFE6D8;
+}
+.ys-table thead th:first-child { border-top-left-radius: 12px; }
+.ys-table thead th:last-child { border-top-right-radius: 12px; }
+.ys-table tbody tr:nth-child(even) { background: #FFFDF7; }
+.ys-table tbody tr:hover { background: #FDEFD9; }
+.ys-table tbody tr:last-child td:first-child { border-bottom-left-radius: 12px; }
+.ys-table tbody tr:last-child td:last-child { border-bottom-right-radius: 12px; }
+.ys-table .num {
+  text-align: right; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ys-table tbody td:nth-child(3) { font-weight: 700; color: #D95F41; }
+.ys-table tbody td:nth-child(4) { color: #6E6255; }
+.ys-table .ys-trip-link { color: #4A4039; font-weight: 600; text-decoration: none; }
+.ys-table .ys-trip-link:hover { color: #E76F51; text-decoration: underline; }
+
+/* 信息窗里的行程链接 */
+.info-trip-link {
+  display: inline-block; margin-top: 8px;
+  color: #E76F51; font-size: 13px; font-weight: 600; text-decoration: none;
+}
+.info-trip-link:hover { text-decoration: underline; }
+
+/* ---------- 注册邮箱验证码 ---------- */
+.code-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.code-row input { flex: 1; margin-bottom: 0 !important; }
+#send-code-btn {
+  flex-shrink: 0; border: 2px solid #F4A261; background: #fff;
+  color: #E76F51; font-size: 13px; font-weight: 600;
+  border-radius: 999px; padding: 0 16px; cursor: pointer;
+}
+#send-code-btn:hover:not(:disabled) { background: #FDEFD9; }
+#send-code-btn:disabled { border-color: #EFE6D8; color: #B9AE9F; cursor: default; }

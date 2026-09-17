@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>结伴出行</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="key-banner" class="key-banner hidden">请在 config.json 中填入高德 Key 后重启服务，地图才能加载</div>
+  <div id="toast" class="toast hidden"></div>
+
+  <div class="layout">
+    <div id="map-container">
+      <div id="map-fallback" class="map-fallback hidden">地图未加载（缺少高德 Key）</div>
+    </div>
+
+    <button id="panel-toggle" class="panel-toggle" title="折叠/展开面板">☰</button>
+
+    <a href="/trips.html?new=1" id="fab" class="fab hidden" title="创建行程">+</a>
+
+    <aside id="panel" class="panel">
+      <header class="panel-header">
+        <div class="panel-header-row">
+          <h1>结伴出行</h1>
+          <div class="user-info">
+            <span class="user-chip">
+              <span class="user-avatar" id="user-avatar"></span>
+              <span id="current-user" class="current-user"></span>
+            </span>
+            <button id="logout-btn" class="logout-btn" title="退出登录">退出</button>
+          </div>
+        </div>
+        <p class="subtitle">和伙伴一起，记录走过的城市</p>
+        <div id="guest-banner" class="guest-banner hidden">游客模式 · 正在浏览 admin 的地图（只读）</div>
+      </header>
+
+      <div class="stats">
+        <div class="stat-card"><div class="stat-num" id="stat-cities">0</div><div class="stat-label">城市</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-visits">0</div><div class="stat-label">总次数</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-countries">0</div><div class="stat-label">国家/地区</div></div>
+      </div>
+
+      <div class="year-summary" id="year-summary">
+        <div class="year-summary-head">
+          <span class="section-title">年度汇总</span>
+          <select id="year-select" class="year-select"></select>
+        </div>
+        <div class="year-nums">
+          <div class="year-num"><strong id="ys-cities">0</strong><span>个地方</span></div>
+          <div class="year-num"><strong id="ys-km">0</strong><span>公里(往返)</span></div>
+        </div>
+        <div class="year-sub" id="ys-sub"></div>
+        <button id="ys-toggle" class="btn btn-small btn-ghost ys-toggle">查看明细 ▾</button>
+      </div>
+
+      <div id="empty-state" class="empty-state hidden">还没有城市记录，点右下角 + 发起你的第一段旅行吧</div>
+      <ul id="city-list" class="city-list"></ul>
+    </aside>
+  </div>
+
+  <!-- 年度汇总明细弹窗 -->
+  <div id="ys-modal" class="modal hidden">
+    <div class="modal-mask" id="ys-mask"></div>
+    <div class="modal-dialog modal-sm">
+      <div class="modal-head">
+        <span class="modal-title" id="ys-modal-title">明细</span>
+        <button id="ys-close" class="modal-close" title="关闭">×</button>
+      </div>
+      <div id="ys-detail" class="year-detail"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

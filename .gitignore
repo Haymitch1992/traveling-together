@@ -1,0 +1,5 @@
+node_modules/
+data/travel.db
+data/*.bak
+data/uploads/
+config.json

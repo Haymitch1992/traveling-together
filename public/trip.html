@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>旅行详情 - 结伴出行</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="trip-page">
+  <div id="toast" class="toast hidden"></div>
+
+  <nav class="top-nav">
+    <div class="top-nav-left">
+      <a href="/trips.html" class="nav-link">← 旅行项目</a>
+      <span class="nav-title" id="nav-title">旅行详情</span>
+    </div>
+    <div class="user-info">
+      <span id="current-user" class="current-user"></span>
+      <button id="logout-btn" class="btn btn-small btn-ghost">退出</button>
+    </div>
+  </nav>
+
+  <div id="guest-banner" class="guest-banner guest-banner-top hidden">游客模式 · 正在浏览 admin 的旅行项目（只读）</div>
+
+  <main class="trips-main" id="main" hidden>
+
+    <!-- 基本信息 -->
+    <section class="card">
+      <div class="card-title-row">
+        <div class="card-title">基本信息</div>
+        <div id="info-ops">
+          <button id="info-edit" class="btn btn-small btn-ghost">编辑</button>
+          <button id="trip-delete" class="btn btn-small btn-danger">删除项目</button>
+        </div>
+      </div>
+      <div id="info-view" class="info-view"></div>
+
+      <div id="info-edit-form" class="create-form hidden">
+        <div class="form-grid">
+          <label>旅行项目名<input type="text" id="e-title" maxlength="50"></label>
+          <label>出发时间<input type="date" id="e-date"></label>
+          <label>旅行天数<input type="number" id="e-days" min="1" max="365"></label>
+          <label>出行方式
+            <select id="e-transport">
+              <option>驾车</option><option>火车</option><option>飞机</option>
+              <option>骑行</option><option>步行</option><option>其他</option>
+            </select>
+          </label>
+          <label>总预算（元）<input type="number" id="e-budget" min="0" step="0.01"></label>
+          <label>单程距离（公里）<input type="number" id="e-distance" min="0" step="0.1"></label>
+        </div>
+        <div class="form-block">
+          <div class="form-label">目的地（在地图上点击重新选点）</div>
+          <div class="dest-picker">
+            <div class="dest-side">
+              <label class="dest-name-label">目的地名称<input type="text" id="e-dest-name" maxlength="50"></label>
+              <div id="e-dest-coord" class="dest-coord"></div>
+              <div id="e-distance-hint" class="distance-hint"></div>
+            </div>
+            <div id="edit-map" class="picker-map"></div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button id="edit-cancel" class="btn btn-ghost">取消</button>
+          <button id="edit-save" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 同行人 + 花费分摊 -->
+    <section class="card">
+      <div class="card-title">同行人</div>
+      <div id="member-list" class="member-list"></div>
+      <div class="inline-add" id="member-add-box">
+        <input type="text" id="member-add-input" placeholder="添加同行人" maxlength="20">
+        <button id="member-add-btn" class="btn btn-small btn-primary">添加</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title">花费与分摊</div>
+      <div id="settlement" class="settlement"></div>
+      <div id="expense-list" class="expense-list"></div>
+      <div class="inline-add-form" id="expense-add-box">
+        <select id="x-payer"></select>
+        <input type="number" id="x-amount" placeholder="金额" min="0" step="0.01">
+        <select id="x-category">
+          <option>餐饮</option><option>住宿</option><option>交通</option>
+          <option>门票</option><option>购物</option><option>其他</option>
+        </select>
+        <input type="text" id="x-note" placeholder="备注（可选）" maxlength="50">
+        <input type="date" id="x-date">
+        <button id="x-add-btn" class="btn btn-small btn-primary">记一笔</button>
+      </div>
+    </section>
+
+    <!-- 具体行程 -->
+    <section class="card">
+      <div class="card-title-row">
+        <div class="card-title">具体行程</div>
+        <button id="ai-gen-btn" class="btn btn-small btn-primary">✨ AI 生成行程</button>
+      </div>
+      <div id="ai-preview" class="ai-preview hidden"></div>
+      <div id="itinerary" class="itinerary"></div>
+      <div class="inline-add-form" id="it-add-box">
+        <select id="it-day"></select>
+        <input type="text" id="it-content" placeholder="行程内容，如：上午 西湖游船" maxlength="200">
+        <button id="it-add-btn" class="btn btn-small btn-primary">添加</button>
+      </div>
+    </section>
+
+    <!-- 照片墙 -->
+    <section class="card">
+      <div class="card-title-row">
+        <div class="card-title">照片墙</div>
+        <label class="btn btn-small btn-primary" id="photo-upload-label">
+          上传照片
+          <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden>
+        </label>
+      </div>
+      <div id="photo-empty" class="empty-state hidden">还没有照片，上传旅途中的精彩瞬间吧</div>
+      <div id="photo-wall" class="photo-wall"></div>
+    </section>
+  </main>
+
+  <!-- lightbox -->
+  <div id="lightbox" class="lightbox hidden">
+    <button id="lightbox-close" class="lightbox-close">×</button>
+    <img id="lightbox-img" alt="照片">
+  </div>
+
+  <script src="trip.js"></script>
+</body>
+</html>
