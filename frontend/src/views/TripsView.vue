@@ -14,33 +14,6 @@
     <div v-if="authState.isGuest" class="guest-banner">游客模式 · 正在浏览 admin 的旅行项目（只读）</div>
 
     <main class="trips-main">
-      <!-- 出发城市 -->
-      <section class="card">
-        <div class="card-title">🏠 我的出发城市</div>
-        <div v-if="hasHome && !homeEditing" class="home-row">
-          <span class="home-name">{{ profile.home_name }}</span>
-          <el-button v-if="!authState.isGuest" size="small" text @click="homeEditing = true">修改</el-button>
-        </div>
-        <div v-else-if="!authState.isGuest" class="home-row">
-          <div class="search-box search-box-inline">
-            <el-input
-              v-model="homeQuery"
-              placeholder="搜索并选择你的常住城市"
-              clearable
-              @input="onHomeInput"
-            />
-            <ul v-if="homeShowResults" class="search-results">
-              <li v-if="!homeResults.length" class="search-none">未找到匹配的城市</li>
-              <li v-for="c in homeResults" :key="c.name + c.lat" @click="pickHome(c)">
-                <strong>{{ c.name }}</strong>
-                <em v-if="c.name_en"> {{ c.name_en }}</em>
-                <span class="search-country">· {{ c.country }}</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
       <!-- 发起旅行 -->
       <section v-if="!authState.isGuest" class="card">
         <div class="card-title-row">
@@ -105,6 +78,25 @@
     >
       <div class="create-form">
         <div class="form-grid">
+          <label class="home-field">
+            <span class="form-label">出发城市</span>
+            <div class="search-box">
+              <el-input
+                v-model="homeQuery"
+                placeholder="搜索出发城市"
+                clearable
+                @input="onHomeInput"
+              />
+              <ul v-if="homeShowResults" class="search-results">
+                <li v-if="!homeResults.length" class="search-none">未找到匹配的城市</li>
+                <li v-for="c in homeResults" :key="c.name + c.lat" @click="pickHome(c)">
+                  <strong>{{ c.name }}</strong>
+                  <em v-if="c.name_en"> {{ c.name_en }}</em>
+                  <span class="search-country">· {{ c.country }}</span>
+                </li>
+              </ul>
+            </div>
+          </label>
           <label>
             <span class="form-label">旅行项目名</span>
             <el-input v-model="form.title" maxlength="50" placeholder="如：五一川西自驾" />
@@ -218,7 +210,6 @@ const transports = ['驾车', '火车', '飞机', '骑行', '步行', '其他'];
 
 // ---------- 状态 ----------
 const profile = ref(null);
-const homeEditing = ref(false);
 const homeQuery = ref('');
 const homeResults = ref([]);
 const homeShowResults = ref(false);
@@ -257,7 +248,6 @@ let destMarker = null;
 let amapReady = false;
 
 // ---------- 计算属性 ----------
-const hasHome = computed(() => !!(profile.value && profile.value.home_name));
 const companionBoard = computed(() => companions.value.filter((c) => c.name !== '我'));
 const shownCompanions = computed(() =>
   companionExpanded.value ? companionBoard.value : companionBoard.value.slice(0, 3));
@@ -307,14 +297,24 @@ function onDocClick(e) {
   }
 }
 
-// ---------- 出发城市 ----------
+// ---------- 出发城市（发起弹窗内选择，选中即保存为常驻出发地） ----------
 async function pickHome(c) {
   homeShowResults.value = false;
-  homeQuery.value = '';
+  homeQuery.value = c.name;
   try {
     profile.value = await put('/api/profile', { home_name: c.name, home_lat: c.lat, home_lng: c.lng });
     ElMessage.success(`出发城市已设为 ${c.name}`);
-    homeEditing.value = false;
+    // 地图已初始化时同步出发地标记并重算距离
+    if (pickerMap && window.AMap) {
+      if (originMarker) originMarker.setMap(null);
+      originMarker = new AMap.Marker({
+        position: [c.lng, c.lat],
+        label: { content: '出发地', direction: 'top' },
+      });
+      originMarker.setMap(pickerMap);
+      pickerMap.setCenter([c.lng, c.lat]);
+    }
+    recalcDistance();
   } catch (_) { /* 已提示 */ }
 }
 
@@ -430,6 +430,7 @@ function pickDest(c) {
 function openCreate() {
   createVisible.value = true;
   if (!form.date) form.date = today();
+  homeQuery.value = (profile.value && profile.value.home_name) || '';
 }
 
 async function onDialogOpened() {
@@ -538,12 +539,8 @@ onUnmounted(() => {
 .card-title { font-size: 19px; font-weight: 700; color: var(--brand-ink); margin-bottom: 12px; }
 .card-title-row { display: flex; align-items: center; justify-content: space-between; }
 
-.home-row { display: flex; align-items: center; gap: 10px; min-height: 38px; }
-.home-name { font-size: 17px; font-weight: 700; color: #D95F41; }
-
 /* 搜索下拉 */
 .search-box { position: relative; }
-.search-box-inline { flex: 1; }
 .search-results {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 500;
   background: #fff; border: 1px solid var(--brand-line); margin: 0; padding: 0;
