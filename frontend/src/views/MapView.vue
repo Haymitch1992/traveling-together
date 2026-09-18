@@ -49,7 +49,6 @@
           <div class="year-num"><strong>{{ summary ? summary.cityCount : 0 }}</strong><span>个地方</span></div>
           <div class="year-num"><strong>{{ summary ? summary.totalKm : 0 }}</strong><span>公里(往返)</span></div>
         </div>
-        <div class="year-sub">{{ summaryLine }}</div>
         <el-button size="small" text class="ys-toggle" @click="detailVisible = true">查看明细 ▾</el-button>
       </div>
 
@@ -291,13 +290,6 @@ async function loadYearly(year) {
 async function onYearChange() {
   try { await refresh(); } catch (_) { /* 已提示 */ }
 }
-
-const summaryLine = computed(() => {
-  const s = summary.value;
-  if (!s) return '';
-  const label = s.year === 'all' ? '全部年份' : `${s.year} 年`;
-  return `${label}：打卡 ${s.visitCount} 次 · 旅行 ${s.tripCount} 次 · 在外 ${s.tripDays} 天 · 单程合计 ${s.oneWayKm} km`;
-});
 
 const detailTitle = computed(() => {
   const label = selectedYear.value === 'all' ? '全部年份' : `${selectedYear.value} 年`;
