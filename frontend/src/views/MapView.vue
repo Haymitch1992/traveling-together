@@ -480,12 +480,12 @@ onBeforeUnmount(() => {
 
 /* ---------- 创建行程悬浮按钮 ---------- */
 .fab {
-  position: fixed; right: 392px; bottom: 32px; z-index: 900;
+  position: fixed; right: 440px; bottom: 32px; z-index: 900;
   width: 54px; height: 54px; font-size: 28px; line-height: 1; padding: 0;
   box-shadow: 0 6px 16px rgba(231, 111, 81, 0.45);
   transition: right 0.25s ease;
 }
-.panel-collapsed .fab { right: 32px; }
+.panel-collapsed .fab { right: 48px; }
 
 /* ---------- 右侧面板 ---------- */
 .panel {
