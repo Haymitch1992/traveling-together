@@ -7,5 +7,6 @@
   "smtpPort": 465,
   "smtpUser": "",
   "smtpPass": "",
-  "smtpFrom": ""
+  "smtpFrom": "",
+  "authorEmail": "wangzhiwei3306@163.com"
 }

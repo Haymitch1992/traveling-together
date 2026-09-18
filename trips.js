@@ -27,6 +27,61 @@ function findOwnChild(table, id, tripId) {
   return db.prepare(`SELECT * FROM ${table} WHERE id = ? AND trip_id = ?`).get(id, tripId);
 }
 
+function listDestinations(tripId) {
+  return db.prepare(
+    'SELECT id, name, lat, lng, country, sort_order FROM trip_destinations WHERE trip_id = ? ORDER BY sort_order, id'
+  ).all(tripId);
+}
+
+function formatDestName(dests) {
+  return dests.map((d) => d.name).join(' · ');
+}
+
+/** @returns {Array|{error:string}} */
+function normalizeDestinations(body) {
+  let list = body && body.destinations;
+  if (!Array.isArray(list) || !list.length) {
+    if (body && body.dest_name && typeof body.dest_lat === 'number' && typeof body.dest_lng === 'number') {
+      list = [{
+        name: body.dest_name,
+        lat: body.dest_lat,
+        lng: body.dest_lng,
+        country: body.dest_country,
+      }];
+    } else {
+      return { error: '请至少添加一个目的地' };
+    }
+  }
+  if (list.length > 20) return { error: '目的地最多 20 个' };
+  const out = [];
+  const seen = new Set();
+  for (const d of list) {
+    if (!d || typeof d.name !== 'string' || !d.name.trim()) return { error: '目的地名称无效' };
+    const name = d.name.trim().slice(0, 50);
+    if (typeof d.lat !== 'number' || typeof d.lng !== 'number' ||
+        Math.abs(d.lat) > 90 || Math.abs(d.lng) > 180) return { error: '目的地坐标无效' };
+    const key = `${name}|${d.lat.toFixed(4)}|${d.lng.toFixed(4)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name,
+      lat: d.lat,
+      lng: d.lng,
+      country: typeof d.country === 'string' && d.country.trim() ? d.country.trim() : '未知',
+    });
+  }
+  if (!out.length) return { error: '请至少添加一个目的地' };
+  return out;
+}
+
+function replaceDestinations(tripId, dests) {
+  db.prepare('DELETE FROM trip_destinations WHERE trip_id = ?').run(tripId);
+  const ins = db.prepare(
+    'INSERT INTO trip_destinations (trip_id, name, lat, lng, country, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  dests.forEach((d, i) => ins.run(tripId, d.name, d.lat, d.lng, d.country || null, i));
+}
+
 // ---------- 分摊计算 ----------
 function settle(members, expenses) {
   const paidBy = {};
@@ -61,9 +116,16 @@ function settle(members, expenses) {
 }
 
 // ---------- 个人资料 ----------
+function avatarUrl(userId, filename) {
+  return filename ? `/uploads/avatars/${userId}/${filename}` : null;
+}
+
 router.get('/profile', requireAuth, (req, res) => {
-  const u = db.prepare('SELECT username, email, home_name, home_lat, home_lng FROM users WHERE id = ?').get(req.auth.userId);
-  res.json(u);
+  const u = db.prepare('SELECT username, email, home_name, home_lat, home_lng, avatar FROM users WHERE id = ?').get(req.auth.userId);
+  res.json({
+    ...u,
+    avatarUrl: avatarUrl(req.auth.userId, u && u.avatar),
+  });
 });
 
 router.put('/profile', requireAuth, requireWrite, (req, res) => {
@@ -73,7 +135,58 @@ router.put('/profile', requireAuth, requireWrite, (req, res) => {
       Math.abs(home_lat) > 90 || Math.abs(home_lng) > 180) return bad(res, '坐标无效');
   db.prepare('UPDATE users SET home_name = ?, home_lat = ?, home_lng = ? WHERE id = ?')
     .run(home_name, home_lat, home_lng, req.auth.userId);
-  res.json({ username: req.auth.username, home_name, home_lat, home_lng });
+  const u = db.prepare('SELECT username, email, home_name, home_lat, home_lng, avatar FROM users WHERE id = ?').get(req.auth.userId);
+  res.json({ ...u, avatarUrl: avatarUrl(req.auth.userId, u.avatar) });
+});
+
+const AVATAR_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+const avatarStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const dir = path.join(uploadRoot, 'avatars', String(req.auth.userId));
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename(req, file, cb) {
+    cb(null, 'avatar' + (AVATAR_EXT[file.mimetype] || '.jpg'));
+  },
+});
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  fileFilter(req, file, cb) {
+    if (AVATAR_EXT[file.mimetype]) cb(null, true);
+    else cb(new Error('头像仅支持 jpg/png/webp'));
+  },
+});
+
+router.post('/profile/avatar', requireAuth, requireWrite, (req, res) => {
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) return bad(res, err.message === 'File too large' ? '头像不能超过 2MB' : err.message);
+    if (!req.file) return bad(res, '未收到文件');
+    const userId = req.auth.userId;
+    const filename = path.basename(req.file.path);
+    const prev = db.prepare('SELECT avatar FROM users WHERE id = ?').get(userId);
+    // 扩展名变更时删掉旧文件
+    if (prev && prev.avatar && prev.avatar !== filename) {
+      fs.rmSync(path.join(uploadRoot, 'avatars', String(userId), prev.avatar), { force: true });
+    }
+    db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(filename, userId);
+    res.json({
+      ok: true,
+      avatar: filename,
+      avatarUrl: avatarUrl(userId, filename) + '?t=' + Date.now(),
+    });
+  });
+});
+
+router.delete('/profile/avatar', requireAuth, requireWrite, (req, res) => {
+  const userId = req.auth.userId;
+  const prev = db.prepare('SELECT avatar FROM users WHERE id = ?').get(userId);
+  if (prev && prev.avatar) {
+    fs.rmSync(path.join(uploadRoot, 'avatars', String(userId), prev.avatar), { force: true });
+  }
+  db.prepare('UPDATE users SET avatar = NULL WHERE id = ?').run(userId);
+  res.json({ ok: true, avatarUrl: null });
 });
 
 // ---------- 同行人榜单 ----------
@@ -95,6 +208,7 @@ router.get('/trips', requireAuth, (req, res) => {
     : db.prepare('SELECT * FROM trips WHERE user_id = ? ORDER BY depart_date DESC, id DESC').all(req.auth.userId);
   const result = trips.map((t) => ({
     ...t,
+    destinations: listDestinations(t.id),
     memberCount: db.prepare('SELECT COUNT(*) AS n FROM trip_members WHERE trip_id = ?').get(t.id).n,
     spent: round2(db.prepare('SELECT COALESCE(SUM(amount),0) AS s FROM trip_expenses WHERE trip_id = ?').get(t.id).s),
     photoCount: db.prepare('SELECT COUNT(*) AS n FROM trip_photos WHERE trip_id = ?').get(t.id).n,
@@ -103,11 +217,10 @@ router.get('/trips', requireAuth, (req, res) => {
 });
 
 function validateTripBody(body) {
-  const { title, dest_name, dest_lat, dest_lng, depart_date, days, transport, distance_km, budget } = body || {};
+  const { title, depart_date, days, transport, distance_km, budget } = body || {};
   if (!title || typeof title !== 'string' || title.length > 50) return 'title 必填且不超过 50 字';
-  if (!dest_name || typeof dest_name !== 'string') return 'dest_name 必填';
-  if (typeof dest_lat !== 'number' || typeof dest_lng !== 'number' ||
-      Math.abs(dest_lat) > 90 || Math.abs(dest_lng) > 180) return '目的地坐标无效';
+  const dests = normalizeDestinations(body);
+  if (dests.error) return dests.error;
   if (!depart_date || !DATE_RE.test(depart_date)) return 'depart_date 必填，格式 YYYY-MM-DD';
   if (!Number.isInteger(days) || days < 1 || days > 365) return 'days 需为 1-365 的整数';
   if (!TRANSPORTS.includes(transport)) return 'transport 需为：' + TRANSPORTS.join('/');
@@ -120,26 +233,31 @@ router.post('/trips', requireAuth, requireWrite, (req, res) => {
   const err = validateTripBody(req.body);
   if (err) return bad(res, err);
   const b = req.body;
+  const dests = normalizeDestinations(b);
   const members = Array.isArray(b.members) ? b.members.map((s) => String(s).trim()).filter(Boolean) : [];
   if (!members.length) return bad(res, '至少一名同行人（含自己）');
   if (members.length > 20) return bad(res, '同行人最多 20 人');
   if (new Set(members).size !== members.length) return bad(res, '同行人名字重复');
 
   const user = db.prepare('SELECT home_name, home_lat, home_lng FROM users WHERE id = ?').get(req.auth.userId);
+  const primary = dests[0];
+  const destName = formatDestName(dests);
   const r = db.prepare(`INSERT INTO trips
     (user_id, title, origin_name, origin_lat, origin_lng, dest_name, dest_lat, dest_lng,
      depart_date, days, transport, distance_km, budget)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(req.auth.userId, b.title, user.home_name || null, user.home_lat ?? null, user.home_lng ?? null,
-      b.dest_name, b.dest_lat, b.dest_lng, b.depart_date, b.days, b.transport,
+      destName, primary.lat, primary.lng, b.depart_date, b.days, b.transport,
       b.distance_km ?? null, b.budget ?? null);
   const tripId = r.lastInsertRowid;
+  replaceDestinations(tripId, dests);
   const ins = db.prepare('INSERT INTO trip_members (trip_id, name) VALUES (?, ?)');
   members.forEach((m) => ins.run(tripId, m));
-  checkinDestination(req.auth.userId, b.title, b.dest_name, b.dest_lat, b.dest_lng,
-    typeof b.dest_country === 'string' && b.dest_country.trim() ? b.dest_country.trim() : '未知',
-    b.depart_date);
-  res.status(201).json(db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId));
+  dests.forEach((d) => checkinDestination(
+    req.auth.userId, b.title, d.name, d.lat, d.lng, d.country, b.depart_date
+  ));
+  const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId);
+  res.status(201).json({ ...trip, destinations: listDestinations(tripId) });
 });
 
 // 发起旅行时自动把目的地记为一次城市打卡（首页统计随之更新）
@@ -155,6 +273,21 @@ function checkinDestination(userId, title, destName, destLat, destLng, country, 
     .run(city.id, date, `旅行项目：${title}`);
 }
 
+function clearTripCheckins(userId, title, date) {
+  const visits = db.prepare(`
+    SELECT v.id, v.city_id FROM visits v JOIN cities c ON c.id = v.city_id
+    WHERE c.user_id = ? AND v.note = ? AND v.visited_at = ?
+  `).all(userId, `旅行项目：${title}`, date);
+  const cityIds = [...new Set(visits.map((v) => v.city_id))];
+  for (const v of visits) {
+    db.prepare('DELETE FROM visits WHERE id = ?').run(v.id);
+  }
+  for (const cityId of cityIds) {
+    const left = db.prepare('SELECT COUNT(*) AS n FROM visits WHERE city_id = ?').get(cityId).n;
+    if (left === 0) db.prepare('DELETE FROM cities WHERE id = ?').run(cityId);
+  }
+}
+
 router.get('/trips/:id', requireAuth, (req, res) => {
   const trip = findOwnTrip(Number(req.params.id), req.auth.userId);
   if (!trip) return notFound(res, '旅行项目不存在');
@@ -162,7 +295,8 @@ router.get('/trips/:id', requireAuth, (req, res) => {
   const expenses = db.prepare('SELECT * FROM trip_expenses WHERE trip_id = ? ORDER BY spent_at DESC, id DESC').all(trip.id);
   const itinerary = db.prepare('SELECT * FROM trip_itinerary WHERE trip_id = ? ORDER BY day_no, sort, id').all(trip.id);
   const photos = db.prepare('SELECT id, filename, original_name, created_at FROM trip_photos WHERE trip_id = ? ORDER BY id DESC').all(trip.id);
-  res.json({ ...trip, members, expenses, itinerary, photos, settlement: settle(members, expenses) });
+  const destinations = listDestinations(trip.id);
+  res.json({ ...trip, destinations, members, expenses, itinerary, photos, settlement: settle(members, expenses) });
 });
 
 router.put('/trips/:id', requireAuth, requireWrite, (req, res) => {
@@ -171,36 +305,25 @@ router.put('/trips/:id', requireAuth, requireWrite, (req, res) => {
   const err = validateTripBody(req.body);
   if (err) return bad(res, err);
   const b = req.body;
+  const dests = normalizeDestinations(b);
+  const primary = dests[0];
+  const destName = formatDestName(dests);
   db.prepare(`UPDATE trips SET title=?, dest_name=?, dest_lat=?, dest_lng=?,
     depart_date=?, days=?, transport=?, distance_km=?, budget=? WHERE id=?`)
-    .run(b.title, b.dest_name, b.dest_lat, b.dest_lng, b.depart_date, b.days, b.transport,
+    .run(b.title, destName, primary.lat, primary.lng, b.depart_date, b.days, b.transport,
       b.distance_km ?? null, b.budget ?? null, trip.id);
-  syncCheckin(req.auth.userId, trip, b);
-  res.json(db.prepare('SELECT * FROM trips WHERE id = ?').get(trip.id));
+  replaceDestinations(trip.id, dests);
+  syncCheckin(req.auth.userId, trip, b, dests);
+  const updated = db.prepare('SELECT * FROM trips WHERE id = ?').get(trip.id);
+  res.json({ ...updated, destinations: listDestinations(trip.id) });
 });
 
-// 编辑项目后同步自动打卡记录：迁移到（可能的）新目的地城市，更新日期和备注
-function syncCheckin(userId, oldTrip, b) {
-  const visit = db.prepare(`
-    SELECT v.* FROM visits v JOIN cities c ON c.id = v.city_id
-    WHERE c.user_id = ? AND v.note = ? AND v.visited_at = ?
-  `).get(userId, `旅行项目：${oldTrip.title}`, oldTrip.depart_date);
-  if (!visit) return;
-  const oldCity = db.prepare('SELECT * FROM cities WHERE id = ?').get(visit.city_id);
-  let city = db.prepare('SELECT * FROM cities WHERE name = ? AND user_id = ?').get(b.dest_name, userId);
-  if (!city) {
-    const country = (oldCity && oldCity.country) || '未知';
-    const r = db.prepare('INSERT INTO cities (user_id, name, country, lat, lng, region) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(userId, b.dest_name, country, b.dest_lat, b.dest_lng, nearestRegion(b.dest_lat, b.dest_lng, country));
-    city = { id: r.lastInsertRowid };
-  }
-  db.prepare('UPDATE visits SET city_id = ?, visited_at = ?, note = ? WHERE id = ?')
-    .run(city.id, b.depart_date, `旅行项目：${b.title}`, visit.id);
-  // 旧城市若无其他到访记录则删除，避免留下空城市
-  if (oldCity && oldCity.id !== city.id) {
-    const left = db.prepare('SELECT COUNT(*) AS n FROM visits WHERE city_id = ?').get(oldCity.id).n;
-    if (left === 0) db.prepare('DELETE FROM cities WHERE id = ?').run(oldCity.id);
-  }
+// 编辑项目后同步自动打卡：清掉旧打卡，按新目的地列表重建
+function syncCheckin(userId, oldTrip, b, dests) {
+  clearTripCheckins(userId, oldTrip.title, oldTrip.depart_date);
+  dests.forEach((d) => checkinDestination(
+    userId, b.title, d.name, d.lat, d.lng, d.country, b.depart_date
+  ));
 }
 
 router.delete('/trips/:id', requireAuth, requireWrite, (req, res) => {
@@ -228,6 +351,7 @@ router.delete('/trips/:id/members/:mid', requireAuth, requireWrite, (req, res) =
   if (!trip) return notFound(res, '旅行项目不存在');
   const member = findOwnChild('trip_members', Number(req.params.mid), trip.id);
   if (!member) return notFound(res, '成员不存在');
+  if (member.name === '我') return bad(res, '我默认同行，不能移除');
   const cnt = db.prepare('SELECT COUNT(*) AS n FROM trip_members WHERE trip_id = ?').get(trip.id).n;
   if (cnt <= 1) return bad(res, '至少保留一名成员');
   const hasExpense = db.prepare('SELECT COUNT(*) AS n FROM trip_expenses WHERE trip_id = ? AND payer = ?').get(trip.id, member.name).n;
@@ -331,9 +455,11 @@ router.post('/trips/:id/itinerary/generate', requireAuth, requireWrite, async (r
 
   const members = db.prepare('SELECT name FROM trip_members WHERE trip_id = ? ORDER BY id').all(trip.id)
     .map((m) => m.name).join('、');
+  const dests = listDestinations(trip.id);
+  const destLabel = dests.length ? dests.map((d) => d.name).join('、') : trip.dest_name;
   const prompt = [
     `为以下旅行生成一份分天的具体行程计划：`,
-    `目的地：${trip.dest_name}`,
+    `目的地：${destLabel}`,
     `出发日期：${trip.depart_date}，共 ${trip.days} 天`,
     `出行方式：${trip.transport}${trip.distance_km ? `，单程约 ${trip.distance_km} 公里` : ''}`,
     trip.budget ? `总预算：${trip.budget} 元` : null,
@@ -341,8 +467,9 @@ router.post('/trips/:id/itinerary/generate', requireAuth, requireWrite, async (r
     `要求：`,
     `1. 每天 3-5 条安排，每条一句话，格式如"上午 游览故宫博物院"`,
     `2. 结合目的地真实景点、美食和交通，安排要现实可行`,
-    `3. 第 1 天考虑抵达交通，最后 1 天考虑返程`,
-    `4. 只输出 JSON，格式：{"items":[{"day_no":1,"content":"..."}]}，day_no 从 1 到 ${trip.days}`,
+    dests.length > 1 ? `3. 途经多个地点（${destLabel}），合理安排各站停留与转场` : `3. 第 1 天考虑抵达交通，最后 1 天考虑返程`,
+    dests.length > 1 ? `4. 第 1 天考虑抵达交通，最后 1 天考虑返程` : null,
+    `${dests.length > 1 ? '5' : '4'}. 只输出 JSON，格式：{"items":[{"day_no":1,"content":"..."}]}，day_no 从 1 到 ${trip.days}`,
   ].filter(Boolean).join('\n');
 
   const controller = new AbortController();

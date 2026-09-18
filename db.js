@@ -100,6 +100,26 @@ CREATE TABLE IF NOT EXISTS trip_photos (
   original_name TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS trip_destinations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  country TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS guestbook (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  contact TEXT,
+  content TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  ip TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
 
 // 旧库迁移：cities 表补 user_id 列（归属由 auth.js 初始化时完成）
@@ -122,6 +142,10 @@ if (!userCols.some((c) => c.name === 'home_name')) {
 if (!userCols.some((c) => c.name === 'email')) {
   db.exec('ALTER TABLE users ADD COLUMN email TEXT');
 }
+// 旧库迁移：users 表补头像文件名列
+if (!userCols.some((c) => c.name === 'avatar')) {
+  db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
+}
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL');
 db.exec('CREATE INDEX IF NOT EXISTS idx_cities_user ON cities(user_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_visits_city ON visits(city_id)');
@@ -130,5 +154,21 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_trip_members ON trip_members(trip_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_trip_expenses ON trip_expenses(trip_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_trip_itinerary ON trip_itinerary(trip_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_trip_photos ON trip_photos(trip_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_trip_destinations ON trip_destinations(trip_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_guestbook_created ON guestbook(created_at)');
+
+// 旧库迁移：尚无 trip_destinations 行的旅行，写入单目的地
+const orphanTrips = db.prepare(`
+  SELECT t.id, t.dest_name, t.dest_lat, t.dest_lng FROM trips t
+  WHERE NOT EXISTS (SELECT 1 FROM trip_destinations d WHERE d.trip_id = t.id)
+`).all();
+if (orphanTrips.length) {
+  const insDest = db.prepare(
+    'INSERT INTO trip_destinations (trip_id, name, lat, lng, country, sort_order) VALUES (?, ?, ?, ?, ?, 0)'
+  );
+  for (const t of orphanTrips) {
+    if (t.dest_name) insDest.run(t.id, t.dest_name, t.dest_lat, t.dest_lng, null);
+  }
+}
 
 module.exports = db;

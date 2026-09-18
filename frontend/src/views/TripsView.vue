@@ -1,19 +1,55 @@
 <template>
   <div class="trips-page">
     <nav class="top-nav">
-      <div class="top-nav-left">
-        <router-link to="/" class="nav-link">← 旅行地图</router-link>
-        <span class="nav-title">旅行项目</span>
-      </div>
-      <div class="user-info">
-        <span class="current-user user-link" title="编辑个人资料" @click="router.push('/profile')">{{ authState.isGuest ? '游客' : authState.username }}</span>
-        <el-button size="small" text @click="logout">退出</el-button>
-      </div>
+      <template v-if="isMobile && createVisible">
+        <div class="top-nav-left">
+          <a href="#" class="nav-link" @click.prevent="closeCreate">← 返回</a>
+          <span class="nav-title">发起旅行</span>
+        </div>
+      </template>
+      <template v-else>
+        <div class="top-nav-left">
+          <router-link to="/" class="nav-link">← 旅行地图</router-link>
+          <span class="nav-title">旅行项目</span>
+        </div>
+        <div class="user-info">
+          <router-link to="/guestbook" class="nav-link guestbook-link">留言板</router-link>
+          <span class="current-user user-link" title="编辑个人资料" @click="router.push('/profile')">{{ authState.isGuest ? '游客' : authState.username }}</span>
+          <el-button size="small" text @click="logout">退出</el-button>
+        </div>
+      </template>
     </nav>
 
-    <div v-if="authState.isGuest" class="guest-banner">游客模式 · 正在浏览 admin 的旅行项目（只读）</div>
+    <div v-if="authState.isGuest && !(isMobile && createVisible)" class="guest-banner">游客模式 · 正在浏览 admin 的旅行项目（只读）</div>
 
-    <main class="trips-main">
+    <!-- 移动端：整页发起（不用弹窗） -->
+    <main v-if="isMobile && createVisible" class="trips-main create-page">
+      <CreateTripForm
+        ref="createFormRef"
+        v-bind="formBind"
+        @home-input="onHomeInput"
+        @pick-home="pickHome"
+        @add-member="addMemberFromInput"
+        @remove-member="(i) => members.splice(i, 1)"
+        @add-quick="addQuick"
+        @dest-input="onDestInput"
+        @pick-dest="pickDest"
+        @add-dest-query="addDestFromQuery"
+        @remove-dest="removeDest"
+        @focus-dest="focusDest"
+        @transport-change="recalcDistance"
+        @update:homeQuery="homeQuery = $event"
+        @update:memberInput="memberInput = $event"
+        @update:budgetTier="budgetTier = $event"
+        @update:destQuery="destQuery = $event"
+      />
+      <div class="create-page-actions">
+        <el-button size="large" round class="cancel-btn" @click="closeCreate">取消</el-button>
+        <el-button type="primary" size="large" round class="submit-btn" @click="submit">发起旅行</el-button>
+      </div>
+    </main>
+
+    <main v-show="!(isMobile && createVisible)" class="trips-main">
       <!-- 发起旅行 -->
       <section v-if="!authState.isGuest" class="card">
         <div class="card-title-row">
@@ -22,24 +58,55 @@
         </div>
       </section>
 
-      <!-- 同行人榜单 -->
-      <section v-if="companionBoard.length" class="card">
-        <div class="card-title">👥 同行人榜单</div>
-        <div class="companion-list">
-          <div v-for="(c, i) in shownCompanions" :key="c.name" class="companion-row">
-            <span class="companion-rank">{{ medals[i] || (i + 1) }}</span>
-            <span class="companion-name">{{ c.name }}</span>
-            <span class="companion-count">同行 {{ c.n }} 次</span>
+      <!-- 同行人榜单（手绘插画风） -->
+      <section v-if="companionBoard.length" class="companion-board">
+        <div class="companion-board-head">
+          <div>
+            <h2 class="companion-board-title">同行小分队</h2>
+            <p class="companion-board-sub">一起出发过的伙伴，按同行次数排排站</p>
           </div>
-          <el-button
-            v-if="companionBoard.length > 3"
-            size="small"
-            text
-            class="companion-toggle"
+          <span class="companion-board-total">{{ companionBoard.length }} 人</span>
+        </div>
+
+        <div v-if="podiumCompanions.length" class="companion-podium">
+          <div
+            v-for="slot in podiumSlots"
+            :key="slot.place"
+            class="podium-card"
+            :class="'place-' + slot.place"
+            :style="{ '--delay': slot.place * 0.08 + 's' }"
+          >
+            <div class="podium-aura" aria-hidden="true"></div>
+            <div class="podium-avatar">
+              <img :src="animalIconFor(slot.item.name)" :alt="slot.item.name" draggable="false" />
+              <span class="podium-badge">{{ slot.item.n }}</span>
+            </div>
+            <div class="podium-place">{{ slot.ribbon }}</div>
+            <div class="podium-name">{{ slot.item.name }}</div>
+            <div class="podium-count">同行 {{ slot.item.n }} 次</div>
+          </div>
+        </div>
+
+        <div v-if="restCompanions.length" class="companion-rest">
+          <div
+            v-for="(c, i) in shownRestCompanions"
+            :key="c.name"
+            class="companion-chip"
+            :style="{ '--delay': (0.12 + i * 0.04) + 's' }"
+          >
+            <img class="chip-avatar" :src="animalIconFor(c.name)" :alt="c.name" draggable="false" />
+            <span class="chip-rank">{{ i + podiumCompanions.length + 1 }}</span>
+            <span class="chip-name">{{ c.name }}</span>
+            <span class="chip-count">{{ c.n }} 次</span>
+          </div>
+          <button
+            v-if="restCompanions.length > 3"
+            type="button"
+            class="companion-more"
             @click="companionExpanded = !companionExpanded"
           >
-            {{ companionExpanded ? '收起 ▴' : `查看全部（共 ${companionBoard.length} 人）▾` }}
-          </el-button>
+            {{ companionExpanded ? '收起小队' : `还有 ${restCompanions.length - 3} 位伙伴` }}
+          </button>
         </div>
       </section>
 
@@ -68,124 +135,35 @@
       </div>
     </main>
 
-    <!-- 发起旅行弹窗 -->
+    <!-- 桌面端：弹窗发起 -->
     <el-dialog
+      v-if="!isMobile"
       v-model="createVisible"
       title="✈️ 发起旅行"
       width="880px"
       class="create-dialog"
-      @opened="onDialogOpened"
+      @opened="onCreateOpened"
+      @closed="destroyPickerMap"
     >
-      <div class="create-form">
-        <div class="form-grid">
-          <label class="home-field">
-            <span class="form-label">出发城市</span>
-            <div class="search-box">
-              <el-input
-                v-model="homeQuery"
-                placeholder="搜索出发城市"
-                clearable
-                @input="onHomeInput"
-              />
-              <ul v-if="homeShowResults" class="search-results">
-                <li v-if="!homeResults.length" class="search-none">未找到匹配的城市</li>
-                <li v-for="c in homeResults" :key="c.name + c.lat" @click="pickHome(c)">
-                  <strong>{{ c.name }}</strong>
-                  <em v-if="c.name_en"> {{ c.name_en }}</em>
-                  <span class="search-country">· {{ c.country }}</span>
-                </li>
-              </ul>
-            </div>
-          </label>
-          <label>
-            <span class="form-label">旅行项目名</span>
-            <el-input v-model="form.title" maxlength="50" placeholder="如：五一川西自驾" />
-          </label>
-          <label>
-            <span class="form-label">出发时间</span>
-            <el-date-picker
-              v-model="form.date"
-              type="date"
-              value-format="YYYY-MM-DD"
-              placeholder="选择日期"
-              style="width: 100%"
-            />
-          </label>
-          <label>
-            <span class="form-label">旅行天数</span>
-            <el-input-number v-model="form.days" :min="1" :max="365" style="width: 100%" />
-          </label>
-          <label>
-            <span class="form-label">出行方式</span>
-            <el-select v-model="form.transport" style="width: 100%" @change="recalcDistance">
-              <el-option v-for="t in transports" :key="t" :value="t" :label="t" />
-            </el-select>
-          </label>
-          <label>
-            <span class="form-label">总预算（元，可选）</span>
-            <el-input-number v-model="form.budget" :min="0" :precision="2" :controls="false" placeholder="如 5000" style="width: 100%" />
-          </label>
-        </div>
-
-        <div class="form-block">
-          <div class="form-label">同行人（我默认同行，回车添加其他伙伴）</div>
-          <div v-if="quickPicks.length" class="member-quick">
-            <span class="quick-label">常客：</span>
-            <button
-              v-for="c in quickPicks"
-              :key="c.name"
-              type="button"
-              class="quick-chip"
-              @click="addQuick(c.name)"
-            >{{ c.name }} <em>{{ c.n }}次</em></button>
-          </div>
-          <div class="tag-input">
-            <el-tag
-              v-for="(m, idx) in members"
-              :key="m"
-              closable
-              round
-              class="member-tag"
-              @close="members.splice(idx, 1)"
-            >{{ m }}</el-tag>
-            <input
-              v-model="memberInput"
-              type="text"
-              placeholder="输入名字后回车"
-              maxlength="20"
-              @keydown.enter.prevent="addMemberFromInput"
-            >
-          </div>
-        </div>
-
-        <div class="form-block">
-          <div class="form-label">目的地（输入搜索，或直接在地图上点击选点）</div>
-          <div class="dest-picker">
-            <div class="dest-side">
-              <div class="search-box">
-                <el-input
-                  v-model="destName"
-                  placeholder="搜索城市，或直接输入名称"
-                  maxlength="50"
-                  clearable
-                  @input="onDestInput"
-                />
-                <ul v-if="destShowResults" class="search-results">
-                  <li v-if="!destResults.length" class="search-none">未找到匹配的城市</li>
-                  <li v-for="c in destResults" :key="c.name + c.lat" @click="pickDest(c)">
-                    <strong>{{ c.name }}</strong>
-                    <em v-if="c.name_en"> {{ c.name_en }}</em>
-                    <span class="search-country">· {{ c.country }}</span>
-                  </li>
-                </ul>
-              </div>
-              <div class="dest-coord">{{ destCoordText }}</div>
-              <div v-if="distanceHint" class="distance-hint">{{ distanceHint }}</div>
-            </div>
-            <div ref="pickerMapEl" class="picker-map"></div>
-          </div>
-        </div>
-      </div>
+      <CreateTripForm
+        ref="createFormRef"
+        v-bind="formBind"
+        @home-input="onHomeInput"
+        @pick-home="pickHome"
+        @add-member="addMemberFromInput"
+        @remove-member="(i) => members.splice(i, 1)"
+        @add-quick="addQuick"
+        @dest-input="onDestInput"
+        @pick-dest="pickDest"
+        @add-dest-query="addDestFromQuery"
+        @remove-dest="removeDest"
+        @focus-dest="focusDest"
+        @transport-change="recalcDistance"
+        @update:homeQuery="homeQuery = $event"
+        @update:memberInput="memberInput = $event"
+        @update:budgetTier="budgetTier = $event"
+        @update:destQuery="destQuery = $event"
+      />
       <template #footer>
         <el-button round @click="createVisible = false">取消</el-button>
         <el-button type="primary" round class="submit-btn" @click="submit">发起旅行</el-button>
@@ -201,11 +179,14 @@ import { ElMessage } from 'element-plus';
 import { get, post, put } from '../api';
 import { loadAmap, haversineKm } from '../amap';
 import { authState, fetchMe, logout } from '../auth';
+import { celebrateConfetti } from '../confetti';
+import { BUDGET_TIERS, calcBudget, budgetHint, tierByKey } from '../budget';
+import { animalIconFor } from '../animals';
+import CreateTripForm from '../components/CreateTripForm.vue';
 
 const route = useRoute();
 const router = useRouter();
 
-const medals = ['🥇', '🥈', '🥉'];
 const transports = ['驾车', '火车', '飞机', '骑行', '步行', '其他'];
 
 // ---------- 状态 ----------
@@ -222,37 +203,78 @@ const yearOptions = ref([]);
 const filterYear = ref('all');
 
 const createVisible = ref(false);
+const createFormRef = ref(null);
+const isMobile = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches);
+let mq;
+function onMqChange(e) { isMobile.value = e.matches; }
 const form = reactive({
   title: '',
   date: '',
   days: 3,
   transport: '驾车',
-  budget: undefined,
 });
+const budgetTier = ref('chill');
 const members = ref([]);
 const memberInput = ref('');
 
-const destName = ref('');
+const destinations = ref([]); // [{name, lat, lng, country}]
+const destQuery = ref('');
 const destResults = ref([]);
 const destShowResults = ref(false);
-const destPoint = ref(null); // {lat, lng}
-let destCountry = null;
-const destCoordText = ref('尚未选点');
+const activeDestIndex = ref(-1);
+const destCoordText = ref('尚未添加地点');
 const distanceHint = ref('');
 let computedDistance = null;
+let distanceToken = 0;
 
-const pickerMapEl = ref(null);
 let pickerMap = null;
 let originMarker = null;
-let destMarker = null;
+let destMarkers = [];
 let amapReady = false;
 
 // ---------- 计算属性 ----------
 const companionBoard = computed(() => companions.value.filter((c) => c.name !== '我'));
-const shownCompanions = computed(() =>
-  companionExpanded.value ? companionBoard.value : companionBoard.value.slice(0, 3));
+const podiumCompanions = computed(() => companionBoard.value.slice(0, 3));
+const restCompanions = computed(() => companionBoard.value.slice(3));
+const shownRestCompanions = computed(() =>
+  companionExpanded.value ? restCompanions.value : restCompanions.value.slice(0, 3));
+const podiumSlots = computed(() => {
+  const list = podiumCompanions.value;
+  const ribbons = { 1: '首席旅伴', 2: '常驻搭档', 3: '快乐跟班' };
+  // 满 3 人时用领奖台顺序 2 · 1 · 3；不足则按名次横排
+  const order = list.length >= 3 ? [2, 1, 3] : list.map((_, i) => i + 1);
+  return order
+    .filter((place) => list[place - 1])
+    .map((place) => ({ place, item: list[place - 1], ribbon: ribbons[place] }));
+});
 const quickPicks = computed(() =>
   companions.value.filter((c) => c.name !== '我' && !members.value.includes(c.name)));
+const peopleCount = computed(() => 1 + members.value.length);
+const estimatedBudget = computed(() =>
+  calcBudget(peopleCount.value, form.days, tierByKey(budgetTier.value).rate));
+const budgetCalcHint = computed(() =>
+  budgetHint(peopleCount.value, form.days, tierByKey(budgetTier.value).rate));
+
+const formBind = computed(() => ({
+  form,
+  transports,
+  homeQuery: homeQuery.value,
+  homeResults: homeResults.value,
+  homeShowResults: homeShowResults.value,
+  members: members.value,
+  memberInput: memberInput.value,
+  quickPicks: quickPicks.value,
+  budgetTier: budgetTier.value,
+  estimatedBudget: estimatedBudget.value,
+  budgetCalcHint: budgetCalcHint.value,
+  destinations: destinations.value,
+  destQuery: destQuery.value,
+  destResults: destResults.value,
+  destShowResults: destShowResults.value,
+  destCoordText: destCoordText.value,
+  distanceHint: distanceHint.value,
+  activeDestIndex: activeDestIndex.value,
+}));
 
 // ---------- 工具 ----------
 function today() {
@@ -340,13 +362,133 @@ function addQuick(name) {
 }
 
 // ---------- 选点地图 ----------
+function destroyPickerMap() {
+  if (pickerMap) {
+    pickerMap.destroy();
+    pickerMap = null;
+  }
+  destMarkers = [];
+  originMarker = null;
+}
+
+function clearDestMarkers() {
+  destMarkers.forEach((m) => m.setMap(null));
+  destMarkers = [];
+}
+
+function syncDestMarkers() {
+  if (!pickerMap || !window.AMap) return;
+  clearDestMarkers();
+  const list = destinations.value;
+  list.forEach((d, idx) => {
+    const marker = new AMap.Marker({
+      position: [d.lng, d.lat],
+      draggable: true,
+      title: d.name,
+      label: { content: `${idx + 1}.${d.name}`, direction: 'top' },
+    });
+    marker.on('dragend', (e) => {
+      destinations.value[idx] = {
+        ...destinations.value[idx],
+        lat: e.lnglat.getLat(),
+        lng: e.lnglat.getLng(),
+        country: destinations.value[idx].country || '未知',
+      };
+      updateDestCoordText();
+      recalcDistance();
+    });
+    marker.on('click', () => { activeDestIndex.value = idx; });
+    marker.setMap(pickerMap);
+    destMarkers.push(marker);
+  });
+  if (list.length === 1) {
+    pickerMap.setCenter([list[0].lng, list[0].lat]);
+  } else if (list.length > 1) {
+    pickerMap.setFitView(destMarkers, false, [40, 40, 40, 40]);
+  }
+}
+
+function updateDestCoordText() {
+  const n = destinations.value.length;
+  destCoordText.value = n ? `已添加 ${n} 个地点（地图点选可继续添加）` : '尚未添加地点';
+}
+
+function sameDest(a, b) {
+  return a.name === b.name
+    && Math.abs(a.lat - b.lat) < 0.0001
+    && Math.abs(a.lng - b.lng) < 0.0001;
+}
+
+function addDestination(d) {
+  if (destinations.value.some((x) => sameDest(x, d))) {
+    ElMessage.warning('该地点已添加');
+    return;
+  }
+  if (destinations.value.length >= 20) {
+    ElMessage.error('目的地最多 20 个');
+    return;
+  }
+  destinations.value.push({
+    name: d.name,
+    lat: d.lat,
+    lng: d.lng,
+    country: d.country || '未知',
+  });
+  activeDestIndex.value = destinations.value.length - 1;
+  updateDestCoordText();
+  syncDestMarkers();
+  recalcDistance();
+}
+
+function removeDest(idx) {
+  destinations.value.splice(idx, 1);
+  if (activeDestIndex.value >= destinations.value.length) {
+    activeDestIndex.value = destinations.value.length - 1;
+  }
+  updateDestCoordText();
+  syncDestMarkers();
+  recalcDistance();
+}
+
+function focusDest(idx) {
+  activeDestIndex.value = idx;
+  const d = destinations.value[idx];
+  if (d && pickerMap) pickerMap.setCenter([d.lng, d.lat]);
+}
+
+async function waitForMapEl(retries = 20) {
+  for (let i = 0; i < retries; i++) {
+    await nextTick();
+    const exposed = createFormRef.value?.mapEl;
+    const node = exposed && (exposed.value !== undefined ? exposed.value : exposed);
+    if (node && node.clientWidth > 0) return node;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  const exposed = createFormRef.value?.mapEl;
+  return exposed && (exposed.value !== undefined ? exposed.value : exposed);
+}
+
 async function ensurePickerMap() {
-  if (pickerMap || !amapReady) return;
-  await nextTick();
-  if (!pickerMapEl.value) return;
+  if (pickerMap) {
+    pickerMap.resize();
+    return;
+  }
+  if (!amapReady) {
+    amapReady = await loadAmap(['AMap.Driving', 'AMap.Riding', 'AMap.Walking']);
+  }
+  if (!amapReady || !window.AMap) return;
+
+  const node = await waitForMapEl();
+  if (!node) return;
+
+  // 移动端容器可能刚挂载，强制给足高度再初始化
+  if (!node.style.height) {
+    node.style.minHeight = isMobile.value ? '260px' : '320px';
+  }
+
   const center = profile.value && profile.value.home_lat != null
     ? [profile.value.home_lng, profile.value.home_lat] : [105, 35];
-  pickerMap = new AMap.Map(pickerMapEl.value, {
+  pickerMap = new AMap.Map(node, {
     zoom: profile.value && profile.value.home_lat != null ? 5 : 3,
     center,
   });
@@ -359,111 +501,172 @@ async function ensurePickerMap() {
     originMarker.setMap(pickerMap);
   }
   pickerMap.on('click', (e) => {
-    destCountry = null; // 手动选点，国家未知
-    setDestPoint({ lat: e.lnglat.getLat(), lng: e.lnglat.getLng() });
-    if (!destName.value.trim()) destName.value = '地图选点';
+    const name = destQuery.value.trim() || `地图选点${destinations.value.length + 1}`;
+    addDestination({
+      name,
+      lat: e.lnglat.getLat(),
+      lng: e.lnglat.getLng(),
+      country: '未知',
+    });
+    destQuery.value = '';
+    destShowResults.value = false;
+  });
+  syncDestMarkers();
+  requestAnimationFrame(() => {
+    if (pickerMap) pickerMap.resize();
+  });
+  setTimeout(() => {
+    if (pickerMap) pickerMap.resize();
+  }, 200);
+}
+
+async function onCreateOpened() {
+  destroyPickerMap();
+  await ensurePickerMap();
+}
+
+function segmentDistance(from, to, transport) {
+  return new Promise((resolve) => {
+    const pluginMap = { '驾车': 'Driving', '骑行': 'Riding', '步行': 'Walking' };
+    const plugin = pluginMap[transport];
+    if (plugin && amapReady && window.AMap && window.AMap[plugin]) {
+      const router2 = new window.AMap[plugin]();
+      router2.search([from.lng, from.lat], [to.lng, to.lat], (status, result) => {
+        if (status === 'complete' && result.routes && result.routes.length) {
+          resolve({ km: result.routes[0].distance / 1000, routed: true });
+        } else {
+          resolve({ km: haversineKm(from, to), routed: false });
+        }
+      });
+    } else {
+      resolve({ km: haversineKm(from, to), routed: false });
+    }
   });
 }
 
-function setDestPoint(p) {
-  destPoint.value = p;
-  destCoordText.value = `已选：${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`;
-  if (pickerMap) {
-    if (destMarker) destMarker.setMap(null);
-    destMarker = new AMap.Marker({
-      position: [p.lng, p.lat],
-      draggable: true,
-      title: '目的地',
-      label: { content: '目的地', direction: 'top' },
-    });
-    destMarker.on('dragend', (e) => {
-      setDestPoint({ lat: e.lnglat.getLat(), lng: e.lnglat.getLng() });
-    });
-    destMarker.setMap(pickerMap);
-    pickerMap.setCenter([p.lng, p.lat]);
-  }
-  recalcDistance();
-}
-
-function recalcDistance() {
+async function recalcDistance() {
+  const token = ++distanceToken;
   computedDistance = null;
   distanceHint.value = '';
-  if (!destPoint.value) return;
+  if (!destinations.value.length) return;
   const origin = profile.value && profile.value.home_lat != null
     ? { lat: profile.value.home_lat, lng: profile.value.home_lng } : null;
   if (!origin) {
     distanceHint.value = '未设置出发城市，无法自动计算距离';
     return;
   }
-  const transport = form.transport;
-  const pluginMap = { '驾车': 'Driving', '骑行': 'Riding', '步行': 'Walking' };
-  const plugin = pluginMap[transport];
-  if (plugin && amapReady && window.AMap && window.AMap[plugin]) {
-    distanceHint.value = '正在计算路线…';
-    const router2 = new window.AMap[plugin]();
-    router2.search([origin.lng, origin.lat], [destPoint.value.lng, destPoint.value.lat], (status, result) => {
-      if (status === 'complete' && result.routes && result.routes.length) {
-        const km = result.routes[0].distance / 1000;
-        computedDistance = Math.round(km * 10) / 10;
-        distanceHint.value = `单程距离：${transport}路线约 ${km.toFixed(1)} 公里（高德路径规划）`;
-      } else {
-        const km = haversineKm(origin, destPoint.value);
-        computedDistance = Math.round(km * 10) / 10;
-        distanceHint.value = `单程距离：路线规划失败，直线距离约 ${km.toFixed(1)} 公里`;
-      }
-    });
+  distanceHint.value = '正在计算路线…';
+  const points = [origin, ...destinations.value];
+  let total = 0;
+  let allRouted = true;
+  for (let i = 0; i < points.length - 1; i++) {
+    const seg = await segmentDistance(points[i], points[i + 1], form.transport);
+    if (token !== distanceToken) return;
+    total += seg.km;
+    if (!seg.routed) allRouted = false;
+  }
+  computedDistance = Math.round(total * 10) / 10;
+  const legs = destinations.value.length;
+  const via = legs > 1 ? `（经 ${legs} 站）` : '';
+  if (allRouted && ['驾车', '骑行', '步行'].includes(form.transport)) {
+    distanceHint.value = `单程距离${via}：${form.transport}路线约 ${total.toFixed(1)} 公里`;
   } else {
-    const km = haversineKm(origin, destPoint.value);
-    computedDistance = Math.round(km * 10) / 10;
-    distanceHint.value = `单程距离：${transport}无路线规划，直线距离约 ${km.toFixed(1)} 公里`;
+    distanceHint.value = `单程距离${via}：约 ${total.toFixed(1)} 公里（含直线估算）`;
   }
 }
 
 function pickDest(c) {
   destShowResults.value = false;
-  destName.value = c.name;
-  destCountry = c.country;
-  setDestPoint({ lat: c.lat, lng: c.lng });
+  destQuery.value = '';
+  addDestination({ name: c.name, lat: c.lat, lng: c.lng, country: c.country });
+}
+
+function addDestFromQuery() {
+  const q = destQuery.value.trim();
+  if (!q) return;
+  if (destResults.value.length === 1) {
+    pickDest(destResults.value[0]);
+    return;
+  }
+  ElMessage.info('请从搜索结果中选择，或直接在地图上点选');
 }
 
 // ---------- 发起弹窗 ----------
-function openCreate() {
+function applyPrefillFromQuery() {
+  const q = route.query;
+  if (!q.dest) return;
+  const name = String(q.dest);
+  const lat = Number(q.lat);
+  const lng = Number(q.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    addDestination({
+      name,
+      lat,
+      lng,
+      country: q.country ? String(q.country) : '未知',
+    });
+  }
+  if (!form.title.trim()) form.title = `${name}之行`;
+  router.replace({ path: '/trips/new' });
+}
+
+async function openCreate() {
   createVisible.value = true;
   if (!form.date) form.date = today();
   homeQuery.value = (profile.value && profile.value.home_name) || '';
+  if (!route.query.dest) {
+    // 保留当前未提交的选点；仅从「再记一次」带 query 时覆盖
+  } else {
+    destinations.value = [];
+    activeDestIndex.value = -1;
+    updateDestCoordText();
+  }
+  applyPrefillFromQuery();
+  if (isMobile.value) {
+    if (route.path !== '/trips/new') router.replace({ path: '/trips/new' });
+    // 等整页表单挂载后再初始化地图（多等一帧，避免容器宽高为 0）
+    await nextTick();
+    setTimeout(() => { onCreateOpened(); }, 80);
+  }
 }
 
-async function onDialogOpened() {
-  await ensurePickerMap();
-  if (pickerMap) pickerMap.resize();
+function closeCreate() {
+  createVisible.value = false;
+  destroyPickerMap();
+  if (route.path === '/trips/new') router.replace('/trips');
 }
 
 async function submit() {
   const title = form.title.trim();
-  const dest = destName.value.trim();
   if (!title) return ElMessage.error('请填写旅行项目名');
   if (!form.date) return ElMessage.error('请选择出发时间');
   const days = parseInt(form.days, 10);
   if (!days || days < 1) return ElMessage.error('请填写旅行天数');
-  if (!destPoint.value) return ElMessage.error('请在地图上选择目的地');
-  if (!dest) return ElMessage.error('请填写目的地名称');
+  if (!destinations.value.length) return ElMessage.error('请至少添加一个目的地');
   const body = {
     title,
-    dest_name: dest,
-    dest_lat: destPoint.value.lat,
-    dest_lng: destPoint.value.lng,
-    dest_country: destCountry,
+    destinations: destinations.value.map((d) => ({
+      name: d.name,
+      lat: d.lat,
+      lng: d.lng,
+      country: d.country,
+    })),
     depart_date: form.date,
     days,
     transport: form.transport,
     distance_km: computedDistance,
-    budget: form.budget ? Number(form.budget) : null,
-    members: ['我', ...members.value], // 我默认每次同行
+    budget: estimatedBudget.value,
+    members: ['我', ...members.value],
   };
   try {
     const trip = await post('/api/trips', body);
-    ElMessage.success('旅行项目已创建');
-    router.push(`/trip/${trip.id}`);
+    createVisible.value = false;
+    destroyPickerMap();
+    celebrateConfetti({ duration: 2400, count: 140 });
+    ElMessage.success('旅行项目已创建，出发啦！');
+    setTimeout(() => {
+      router.push(`/trip/${trip.id}`);
+    }, 450);
   } catch (_) { /* 已提示 */ }
 }
 
@@ -487,6 +690,8 @@ function goTrip(id) {
 
 // ---------- 启动 ----------
 onMounted(async () => {
+  mq = window.matchMedia('(max-width: 768px)');
+  mq.addEventListener('change', onMqChange);
   document.addEventListener('click', onDocClick);
   try { await fetchMe(); } catch (_) { return; }
   try { profile.value = await get('/api/profile'); } catch (_) { /* 已提示 */ }
@@ -499,27 +704,32 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (mq) mq.removeEventListener('change', onMqChange);
   document.removeEventListener('click', onDocClick);
 });
 </script>
 
 <style scoped>
-.trips-page { min-height: 100vh; }
+.trips-page { min-height: 100vh; min-height: 100dvh; }
 
 .top-nav {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: rgba(255, 253, 247, 0.88); backdrop-filter: blur(8px);
   border-bottom: 2px solid #ffffff; box-shadow: 0 4px 16px rgba(74, 64, 57, 0.06);
-  padding: 12px 24px; position: sticky; top: 0; z-index: 800;
+  padding: 12px 24px;
+  padding-top: calc(12px + var(--safe-top));
+  position: sticky; top: 0; z-index: 800;
 }
-.top-nav-left { display: flex; align-items: center; gap: 14px; }
-.nav-link { color: #E76F51; font-weight: 600; text-decoration: none; font-size: 14px; }
+.top-nav-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.nav-link { color: #E76F51; font-weight: 600; text-decoration: none; font-size: 14px; white-space: nowrap; }
 .nav-link:hover { text-decoration: underline; }
-.nav-title { font-size: 19px; font-weight: 700; color: var(--brand-ink); }
-.user-info { display: flex; align-items: center; gap: 8px; }
+.nav-title { font-size: 19px; font-weight: 700; color: var(--brand-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-info { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.guestbook-link { font-size: 13px; }
 .current-user {
   background: #fff; border: 1px solid var(--brand-line); border-radius: 999px;
   padding: 4px 14px; font-size: 13px; font-weight: 600; color: var(--brand-sub);
+  max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .user-link { cursor: pointer; }
 .user-link:hover { color: #E76F51; border-color: var(--el-color-primary-light-7); }
@@ -531,7 +741,7 @@ onUnmounted(() => {
   padding: 8px 12px; font-size: 13px;
 }
 
-.trips-main { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+.trips-main { max-width: 860px; margin: 0 auto; padding: 20px 16px calc(60px + var(--safe-bottom)); }
 
 .card {
   background: var(--brand-cream); border: 2px solid #ffffff; border-radius: 20px;
@@ -539,7 +749,7 @@ onUnmounted(() => {
   padding: 22px 24px; margin-bottom: 16px;
 }
 .card-title { font-size: 19px; font-weight: 700; color: var(--brand-ink); margin-bottom: 12px; }
-.card-title-row { display: flex; align-items: center; justify-content: space-between; }
+.card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 
 /* 搜索下拉 */
 .search-box { position: relative; }
@@ -555,22 +765,184 @@ onUnmounted(() => {
 .search-country { color: var(--brand-sub); font-size: 13px; }
 .search-none { color: var(--brand-sub); cursor: default !important; }
 
-/* 同行人榜单 */
-.companion-list { display: flex; flex-direction: column; gap: 8px; }
-.companion-row {
-  display: flex; align-items: center; gap: 10px;
-  background: #fff; border: 1px solid var(--brand-line); border-radius: 12px;
-  padding: 8px 14px; font-size: 14px;
+/* 同行人榜单 · 手绘插画风 */
+.companion-board {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 16px;
+  padding: 22px 20px 18px;
+  border-radius: 24px;
+  border: 2.5px dashed #E8D4B0;
+  background:
+    radial-gradient(ellipse 80% 50% at 12% 0%, rgba(255, 214, 170, 0.45), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 92% 8%, rgba(186, 220, 240, 0.4), transparent 50%),
+    linear-gradient(165deg, #FFF9EE 0%, #FDF3E0 48%, #F7EBD2 100%);
+  box-shadow: 0 12px 28px rgba(74, 64, 57, 0.08);
 }
-.companion-rank { width: 26px; text-align: center; font-weight: 700; color: var(--brand-sub); }
-.companion-name { font-weight: 600; }
-.companion-count { margin-left: auto; color: var(--brand-sub); font-size: 13px; }
-.companion-toggle { align-self: flex-start; }
+.companion-board::before {
+  content: '';
+  position: absolute; inset: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+.companion-board-head {
+  position: relative;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 18px;
+}
+.companion-board-title {
+  margin: 0;
+  font-family: 'KaiTi', 'STKaiti', 'Songti SC', 'PingFang SC', serif;
+  font-size: 26px; font-weight: 700; color: #5C4A3A;
+  letter-spacing: 0.04em;
+}
+.companion-board-sub {
+  margin: 6px 0 0;
+  font-size: 13px; color: #9A8468; line-height: 1.4;
+}
+.companion-board-total {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #FFFDF8;
+  border: 1.5px solid #EFD9B0;
+  color: #A5700B;
+  font-size: 13px; font-weight: 700;
+  box-shadow: 0 2px 0 #F5E6C8;
+}
+
+.companion-podium {
+  position: relative;
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: 10px; margin-bottom: 14px; min-height: 168px;
+}
+.podium-card {
+  position: relative;
+  flex: 1; max-width: 150px;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+  padding: 14px 10px 12px;
+  border-radius: 22px 22px 16px 16px;
+  background: rgba(255, 253, 247, 0.88);
+  border: 2px solid #fff;
+  box-shadow: 0 8px 18px rgba(74, 64, 57, 0.1);
+  animation: companion-rise 0.55s ease both;
+  animation-delay: var(--delay, 0s);
+}
+.podium-card.place-1 {
+  order: 2; z-index: 2;
+  padding-top: 18px; padding-bottom: 16px;
+  transform: translateY(-10px);
+  background: linear-gradient(180deg, #FFF8EC, #FFE8C4);
+  border-color: #F4C97A;
+  box-shadow: 0 12px 24px rgba(196, 140, 40, 0.18);
+}
+.podium-card.place-2 { order: 1; }
+.podium-card.place-3 { order: 3; }
+.podium-aura {
+  position: absolute; top: 8px; left: 50%;
+  width: 72px; height: 72px; margin-left: -36px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(244, 162, 97, 0.28), transparent 70%);
+  pointer-events: none;
+}
+.podium-card.place-1 .podium-aura {
+  width: 88px; height: 88px; margin-left: -44px; top: 6px;
+  background: radial-gradient(circle, rgba(244, 201, 122, 0.45), transparent 70%);
+}
+.podium-avatar {
+  position: relative; z-index: 1;
+  width: 64px; height: 64px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.podium-card.place-1 .podium-avatar { width: 78px; height: 78px; }
+.podium-avatar img {
+  display: block; width: 100%; height: 100%;
+  object-fit: cover; object-position: center center;
+  border-radius: 50%;
+  background: #FFFDF8;
+  box-shadow: 0 0 0 3px #fff, 0 4px 10px rgba(74, 64, 57, 0.16);
+  animation: companion-bob 3.2s ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+.podium-badge {
+  position: absolute; right: -4px; bottom: -2px;
+  min-width: 22px; height: 22px; padding: 0 5px;
+  border-radius: 999px; border: 2px solid #fff;
+  background: #E76F51; color: #fff;
+  font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(231, 111, 81, 0.35);
+}
+.podium-place {
+  font-size: 11px; font-weight: 700; color: #C48C28;
+  letter-spacing: 0.06em; margin-bottom: 2px;
+}
+.podium-card.place-1 .podium-place { color: #D95F41; font-size: 12px; }
+.podium-name {
+  font-size: 15px; font-weight: 700; color: var(--brand-ink);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.podium-card.place-1 .podium-name { font-size: 17px; }
+.podium-count { margin-top: 2px; font-size: 12px; color: #9A8468; }
+
+.companion-rest {
+  position: relative;
+  display: flex; flex-direction: column; gap: 8px;
+  padding-top: 4px;
+}
+.companion-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: rgba(255, 253, 247, 0.92);
+  border: 1.5px solid #F0E2C8;
+  box-shadow: 0 2px 0 #F5EBDA;
+  animation: companion-rise 0.45s ease both;
+  animation-delay: var(--delay, 0s);
+}
+.chip-avatar {
+  width: 36px; height: 36px; flex-shrink: 0;
+  object-fit: cover; object-position: center center; border-radius: 50%;
+  background: #FFFDF8;
+  box-shadow: 0 0 0 2px #fff, 0 2px 5px rgba(74, 64, 57, 0.12);
+}
+.chip-rank {
+  width: 22px; text-align: center;
+  font-size: 12px; font-weight: 800; color: #C4A882;
+}
+.chip-name { font-weight: 700; color: var(--brand-ink); min-width: 0; }
+.chip-count { margin-left: auto; font-size: 13px; color: #9A8468; font-weight: 600; }
+.companion-more {
+  align-self: center;
+  margin-top: 4px;
+  border: none; background: transparent;
+  color: #C48C28; font-size: 13px; font-weight: 700;
+  cursor: pointer; padding: 6px 12px;
+  border-radius: 999px;
+}
+.companion-more:hover { background: rgba(255, 248, 236, 0.9); color: #D95F41; }
+
+@keyframes companion-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes companion-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .podium-card, .companion-chip, .podium-avatar img { animation: none; }
+  .podium-card.place-1 { transform: none; }
+}
 
 /* 列表头 + 项目卡片 */
 .list-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin: 20px 2px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 20px 2px 12px; flex-wrap: wrap;
 }
 .list-title { font-size: 16px; font-weight: 700; }
 .empty-state { text-align: center; color: var(--brand-sub); padding: 40px 0; font-size: 14px; }
@@ -586,62 +958,13 @@ onUnmounted(() => {
 }
 .trip-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(74, 64, 57, 0.13); }
 .trip-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.trip-card-title { font-size: 17px; font-weight: 700; color: var(--brand-ink); }
-.trip-card-dest { color: #D95F41; font-size: 14px; font-weight: 600; flex-shrink: 0; }
+.trip-card-title { font-size: 17px; font-weight: 700; color: var(--brand-ink); min-width: 0; }
+.trip-card-dest {
+  color: #D95F41; font-size: 14px; font-weight: 600; flex-shrink: 1;
+  text-align: right; max-width: 55%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .trip-card-meta { color: var(--brand-sub); font-size: 13px; margin-top: 6px; }
-
-/* 发起弹窗 */
-.create-form {
-  background: #FAF5EA; border: 2px dashed #EFE0C3;
-  border-radius: 16px; padding: 18px;
-}
-.form-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px; margin-bottom: 14px;
-}
-.form-grid label { display: flex; flex-direction: column; gap: 6px; }
-.form-label { color: var(--brand-sub); font-weight: 600; font-size: 13px; }
-.form-block { margin-bottom: 14px; }
-.form-block .form-label { margin-bottom: 8px; font-size: 14px; }
-
-/* 常客 chips */
-.member-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
-.quick-label { font-size: 13px; color: var(--brand-sub); }
-.quick-chip {
-  border: 1px solid #F5D9A8; background: #FDEFD9; color: #A5700B;
-  border-radius: 999px; padding: 3px 12px; font-size: 13px; cursor: pointer;
-  transition: transform 0.12s ease;
-}
-.quick-chip:hover { transform: scale(1.06); }
-.quick-chip em { font-style: normal; font-size: 11px; opacity: 0.75; }
-
-/* 同行人标签输入 */
-.tag-input {
-  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-  border: 2px solid var(--brand-line); border-radius: 12px;
-  padding: 8px 10px; background: #ffffff;
-}
-.tag-input:focus-within { border-color: #F4A261; box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.2); }
-.tag-input input { border: none; outline: none; flex: 1; min-width: 120px; font-size: 14px; padding: 4px; }
-.member-tag { font-weight: 600; }
-
-/* 目的地选点 */
-.dest-picker { display: flex; gap: 14px; }
-.dest-side {
-  width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;
-  background: #ffffff; border: 2px solid var(--brand-line);
-  border-radius: 14px; padding: 14px;
-}
-.picker-map {
-  flex: 1; height: 320px; border-radius: 16px;
-  border: 3px solid #ffffff; background: #e5e7eb;
-  box-shadow: 0 6px 18px rgba(74, 64, 57, 0.12); overflow: hidden;
-}
-.dest-coord { font-size: 13px; color: #B9AE9F; }
-.distance-hint {
-  font-size: 13px; background: #E9F6E3; border-radius: 10px;
-  padding: 8px 12px; color: #4E7A36; font-weight: 600;
-}
 
 .create-btn {
   font-weight: 700; letter-spacing: 1px;
@@ -649,10 +972,51 @@ onUnmounted(() => {
 }
 .submit-btn { font-weight: 700; letter-spacing: 1px; box-shadow: 0 4px 12px rgba(231, 111, 81, 0.3); }
 
-@media (max-width: 720px) {
-  .dest-picker { flex-direction: column; }
-  .dest-side { width: 100%; }
-  .picker-map { height: 260px; }
-  .top-nav { padding: 10px 14px; }
+.create-page-actions {
+  display: flex; gap: 12px; margin-top: 16px;
+  position: sticky; bottom: 0;
+  padding: 14px 0 calc(14px + var(--safe-bottom));
+  background: linear-gradient(180deg, transparent, var(--brand-cream) 28%);
+  z-index: 20;
+}
+.create-page {
+  padding-bottom: calc(24px + var(--safe-bottom));
+}
+.create-page :deep(.picker-map) {
+  /* 避免被底部操作栏挡住时误以为地图没出来 */
+  scroll-margin-bottom: 88px;
+}
+.create-page-actions .el-button {
+  flex: 1;
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.create-page-actions .cancel-btn {
+  border-width: 2px;
+  border-color: #E8D4B0;
+  color: var(--brand-ink);
+  background: #FFFDF8;
+}
+
+@media (max-width: 768px) {
+  .top-nav { padding: 10px 12px; padding-top: calc(10px + var(--safe-top)); }
+  .nav-title { font-size: 16px; }
+  .guest-banner { margin: 10px 12px 0; }
+  .trips-main { padding: 14px 12px calc(40px + var(--safe-bottom)); }
+  .card { padding: 16px; border-radius: 16px; }
+  .card-title { font-size: 17px; }
+  .companion-board { padding: 18px 14px 14px; border-radius: 20px; }
+  .companion-board-title { font-size: 22px; }
+  .companion-podium { gap: 6px; min-height: 150px; }
+  .podium-card { padding: 10px 6px 10px; border-radius: 18px 18px 14px 14px; }
+  .podium-avatar { width: 52px; height: 52px; }
+  .podium-card.place-1 .podium-avatar { width: 64px; height: 64px; }
+  .podium-name { font-size: 13px; }
+  .podium-card.place-1 .podium-name { font-size: 15px; }
+  .podium-place { font-size: 10px; }
+  .trips-list { grid-template-columns: 1fr; gap: 10px; }
+  .trip-card-title { font-size: 16px; }
+  .create-btn, .submit-btn { width: 100%; }
 }
 </style>

@@ -4,18 +4,22 @@
       <div v-if="mapFailed" class="map-fallback">地图未加载（缺少高德 Key 或网络异常）</div>
     </div>
 
-    <button class="panel-toggle" title="折叠/展开面板" @click="panelCollapsed = !panelCollapsed">☰</button>
-
-    <el-button
-      v-if="authState.loaded && !authState.isGuest"
-      class="fab"
-      type="primary"
-      circle
-      title="创建行程"
-      @click="router.push('/trips/new')"
-    >+</el-button>
+    <button
+      class="panel-toggle"
+      type="button"
+      :title="panelCollapsed ? '展开面板' : '隐藏面板'"
+      :aria-label="panelCollapsed ? '展开面板' : '隐藏面板'"
+      @click="panelCollapsed = !panelCollapsed"
+    >
+      <span class="panel-toggle-icon" aria-hidden="true"></span>
+      <span class="panel-toggle-text">{{ panelCollapsed ? '展开' : '隐藏' }}</span>
+    </button>
 
     <aside class="panel">
+      <button type="button" class="panel-handle" :title="panelCollapsed ? '展开面板' : '收起面板'" @click="panelCollapsed = !panelCollapsed" aria-label="折叠面板">
+        <span class="panel-handle-bar"></span>
+        <span class="panel-handle-hint">{{ panelCollapsed ? '上滑展开' : '点击收起' }}</span>
+      </button>
       <header class="panel-header">
         <div class="panel-header-row">
           <h1>结伴出行</h1>
@@ -28,6 +32,10 @@
           </div>
         </div>
         <p class="subtitle">和伙伴一起，记录走过的城市</p>
+        <div class="panel-links">
+          <router-link to="/trips" class="panel-link">旅行项目</router-link>
+          <router-link to="/guestbook" class="panel-link">留言板</router-link>
+        </div>
         <div v-if="authState.isGuest" class="guest-banner">游客模式 · 正在浏览 admin 的地图（只读）</div>
       </header>
 
@@ -52,8 +60,16 @@
         <el-button size="small" text class="ys-toggle" @click="detailVisible = true">查看明细 ▾</el-button>
       </div>
 
+      <el-button
+        v-if="authState.loaded && !authState.isGuest"
+        class="create-trip-btn"
+        type="primary"
+        round
+        @click="router.push('/trips/new')"
+      >+ 发起旅行</el-button>
+
       <div v-if="!cities.length" class="empty-state">
-        {{ authState.isGuest ? 'admin 还没有记录任何城市' : '还没有城市记录，点右下角 + 发起你的第一段旅行吧' }}
+        {{ authState.isGuest ? 'admin 还没有记录任何城市' : '还没有城市记录，点上方「发起旅行」开始吧' }}
       </div>
 
       <ul class="city-list">
@@ -119,7 +135,7 @@
                 </template>
                 <div v-else class="visit-none">暂无到访记录</div>
                 <div v-if="!authState.isGuest" class="city-detail-actions">
-                  <el-button size="small" type="primary" @click="addVisit(city)">再记一次</el-button>
+                  <el-button size="small" type="primary" @click="goCreateTrip(city)">再记一次</el-button>
                   <el-button size="small" type="danger" plain @click="deleteCity(city)">删除城市</el-button>
                 </div>
               </div>
@@ -129,20 +145,27 @@
       </ul>
     </aside>
 
-    <el-dialog v-model="detailVisible" :title="detailTitle" width="560px">
-      <el-table :data="detailRows" size="small" max-height="420" empty-text="还没有记录">
-        <el-table-column label="省市" min-width="130">
-          <template #default="{ row }">
-            <a v-if="row.trip" class="ys-trip-link" href="#" @click.prevent="goTripFromDialog(row.trip.id)">{{ row.name }}</a>
-            <span v-else>{{ row.name }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="country" label="国家/地区" min-width="100" />
-        <el-table-column prop="n" label="次数" width="70" align="right" />
-        <el-table-column label="单程距离" width="110" align="right">
-          <template #default="{ row }">{{ row.km != null ? (Math.round(row.km * 10) / 10) + ' km' : '—' }}</template>
-        </el-table-column>
-      </el-table>
+    <el-dialog
+      v-model="detailVisible"
+      :title="detailTitle"
+      :width="isMobile ? '92%' : '560px'"
+      class="detail-dialog"
+    >
+      <div class="table-scroll">
+        <el-table :data="detailRows" size="small" max-height="420" empty-text="还没有记录">
+          <el-table-column label="省市" min-width="100">
+            <template #default="{ row }">
+              <a v-if="row.trip" class="ys-trip-link" href="#" @click.prevent="goTripFromDialog(row.trip.id)">{{ row.name }}</a>
+              <span v-else>{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="country" label="国家/地区" min-width="88" />
+          <el-table-column prop="n" label="次数" width="64" align="right" />
+          <el-table-column label="单程距离" width="100" align="right">
+            <template #default="{ row }">{{ row.km != null ? (Math.round(row.km * 10) / 10) + ' km' : '—' }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -151,7 +174,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { get, post, put, del } from '../api';
+import { get, put, del } from '../api';
 import { loadAmap } from '../amap';
 import { authState, fetchMe, logout } from '../auth';
 import { markerStyle, travelerContent } from '../animals';
@@ -161,7 +184,9 @@ const router = useRouter();
 // ---------- 状态 ----------
 const mapEl = ref(null);
 const mapFailed = ref(false);
-const panelCollapsed = ref(false);
+const isMobile = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches);
+// 手机端默认收起侧栏，先看地图
+const panelCollapsed = ref(isMobile.value);
 const cities = ref([]);
 const trips = ref([]);
 const stats = reactive({ cityCount: 0, visitCount: 0, countryCount: 0 });
@@ -213,7 +238,7 @@ function renderMarkers() {
     const { color, scale } = markerStyle(city.visitCount);
     const marker = new AMap.Marker({
       position: [city.lng, city.lat],
-      content: travelerContent(scale, color, city.visitCount),
+      content: travelerContent(scale, color, city.visitCount, city.id),
       anchor: 'bottom-center',
       zIndex: 100 + city.visitCount,
     });
@@ -233,7 +258,7 @@ function openInfo(city) {
     : '';
   const info = new AMap.InfoWindow({
     isCustom: false,
-    offset: new AMap.Pixel(0, -34),
+    offset: new AMap.Pixel(0, -68),
     content: `<div class="info-win">
       <div class="info-title">${esc(city.name)}${city.name_en ? ' <span>' + esc(city.name_en) + '</span>' : ''}</div>
       <div class="info-sub">${esc(city.country)} · 去过 ${city.visitCount} 次</div>
@@ -307,9 +332,15 @@ const detailRows = computed(() => {
   const kmByRegion = {};
   const tripByRegion = {};
   s.trips.forEach((t) => {
-    const key = regionOf(t.dest_name);
-    if (t.distance_km != null) kmByRegion[key] = (kmByRegion[key] || 0) + t.distance_km;
-    if (!tripByRegion[key]) tripByRegion[key] = t;
+    const names = (t.destinations && t.destinations.length)
+      ? t.destinations.map((d) => d.name)
+      : String(t.dest_name || '').split(' · ').map((n) => n.trim()).filter(Boolean);
+    const keys = [...new Set(names.map((n) => regionOf(n)))];
+    const share = keys.length && t.distance_km != null ? t.distance_km / keys.length : null;
+    keys.forEach((key) => {
+      if (share != null) kmByRegion[key] = (kmByRegion[key] || 0) + share;
+      if (!tripByRegion[key]) tripByRegion[key] = t;
+    });
   });
   return s.cities.map((c) => ({
     name: c.name,
@@ -387,35 +418,42 @@ async function deleteVisit(city, v) {
   } catch (_) { /* 已提示 */ }
 }
 
-async function addVisit(city) {
-  let note = '';
-  try {
-    const { value } = await ElMessageBox.prompt('备注（可选，直接确定则留空）:', '再记一次', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputPlaceholder: '备注',
-    });
-    note = value || '';
-  } catch (_) { return; }
-  try {
-    await post(`/api/cities/${city.id}/visits`, { visited_at: today(), note });
-    ElMessage.success(`已记录一次 ${city.name} 的到访`);
-    await refresh();
-  } catch (_) { /* 已提示 */ }
+function goCreateTrip(city) {
+  router.push({
+    path: '/trips/new',
+    query: {
+      dest: city.name,
+      lat: String(city.lat),
+      lng: String(city.lng),
+      ...(city.country ? { country: city.country } : {}),
+    },
+  });
 }
 
 async function deleteCity(city) {
+  const yearAll = selectedYear.value === 'all';
+  const yearLabel = yearAll ? '全部年份' : `${selectedYear.value} 年`;
   try {
-    await ElMessageBox.confirm(`确定删除「${city.name}」及其全部到访记录吗？`, '删除城市', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    });
+    await ElMessageBox.confirm(
+      `确定清除「${city.name}」在${yearLabel}的全部旅行项目吗？相关到访记录也会一并删除。`,
+      '删除城市',
+      {
+        confirmButtonText: '清除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    );
   } catch (_) { return; }
   try {
-    await del(`/api/cities/${city.id}`);
+    const yq = yearAll ? '?year=all' : `?year=${selectedYear.value}`;
+    const result = await del(`/api/cities/${city.id}${yq}`);
     expanded.delete(city.id);
-    ElMessage.success(`已删除 ${city.name}`);
+    const n = result.deletedTrips || 0;
+    ElMessage.success(
+      n > 0
+        ? `已清除「${city.name}」${yearLabel}的 ${n} 个旅行项目`
+        : `已清除「${city.name}」${yearLabel}的相关记录`,
+    );
     await refresh();
   } catch (_) { /* 已提示 */ }
 }
@@ -427,7 +465,13 @@ const avatarText = computed(() => {
 });
 
 // ---------- 启动 ----------
+let mq;
+function onMqChange(e) {
+  isMobile.value = e.matches;
+}
 onMounted(async () => {
+  mq = window.matchMedia('(max-width: 768px)');
+  mq.addEventListener('change', onMqChange);
   try {
     await fetchMe();
   } catch (_) {
@@ -450,39 +494,106 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  if (mq) mq.removeEventListener('change', onMqChange);
   clearMarkers();
   if (map) { map.destroy(); map = null; }
 });
 </script>
 
 <style scoped>
-.map-layout { display: flex; height: 100%; overflow: hidden; }
+.map-layout {
+  display: flex; height: 100%; height: 100dvh; overflow: hidden;
+}
 
-.map-container { flex: 1; position: relative; min-width: 0; }
+.map-container { flex: 1; position: relative; min-width: 0; min-height: 0; }
 .map-fallback {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: var(--brand-sub); font-size: 14px;
+  color: var(--brand-sub); font-size: 14px; padding: 16px; text-align: center;
 }
 
 /* ---------- 面板折叠 ---------- */
 .panel-toggle {
-  position: fixed; top: 12px; right: 372px; z-index: 900;
-  width: 32px; height: 32px; border-radius: 50%;
-  border: 1px solid var(--brand-line); background: var(--brand-cream);
-  color: var(--brand-ink); cursor: pointer; font-size: 14px;
-  box-shadow: 0 2px 8px rgba(74, 64, 57, 0.15);
-  transition: right 0.25s ease;
+  position: fixed;
+  top: calc(14px + var(--safe-top));
+  right: 372px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px 0 10px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #8A5A2B;
+  background: linear-gradient(180deg, #FFFDF7 0%, #FDEFD9 100%);
+  box-shadow:
+    0 0 0 1.5px rgba(244, 162, 97, 0.35),
+    0 4px 14px rgba(74, 64, 57, 0.16);
+  transition: right 0.25s ease, transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
-.panel-collapsed .panel-toggle { right: 12px; }
+.panel-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1.5px rgba(231, 111, 81, 0.45),
+    0 8px 18px rgba(74, 64, 57, 0.18);
+  background: linear-gradient(180deg, #FFFDF7 0%, #FCE8C8 100%);
+}
+.panel-toggle:active { transform: translateY(0) scale(0.98); }
+.panel-toggle-icon {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #F4A261, #E76F51);
+  color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+}
+.panel-toggle-icon::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg); /* 指向右侧面板：› */
+  margin-left: -1px;
+}
+.panel-collapsed .panel-toggle-icon { transform: rotate(180deg); }
+.panel-toggle-text {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+.panel-collapsed .panel-toggle { right: calc(12px + var(--safe-right)); }
 
-/* ---------- 创建行程悬浮按钮 ---------- */
-.fab {
-  position: fixed; right: 440px; bottom: 32px; z-index: 900;
-  width: 54px; height: 54px; font-size: 28px; line-height: 1; padding: 0;
-  box-shadow: 0 6px 16px rgba(231, 111, 81, 0.45);
-  transition: right 0.25s ease;
+.panel-handle {
+  display: none; width: 100%; border: none; background: transparent;
+  padding: 10px 0 6px; cursor: pointer;
 }
-.panel-collapsed .fab { right: 48px; }
+.panel-handle-bar {
+  display: block; width: 44px; height: 5px; margin: 0 auto;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #F4A261, #E76F51);
+  opacity: 0.85;
+  box-shadow: 0 1px 2px rgba(74, 64, 57, 0.12);
+}
+.panel-handle-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--brand-sub);
+  letter-spacing: 0.5px;
+}
+.panel-handle:active .panel-handle-bar { opacity: 1; transform: scaleX(1.08); }
+
+/* ---------- 发起旅行（年度汇总下方） ---------- */
+.create-trip-btn {
+  width: 100%;
+  margin-bottom: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 12px rgba(231, 111, 81, 0.35);
+}
 
 /* ---------- 右侧面板 ---------- */
 .panel {
@@ -490,15 +601,28 @@ onBeforeUnmount(() => {
   background: var(--brand-cream);
   border-left: 1px solid var(--brand-line);
   padding: 16px;
-  transition: margin-right 0.25s ease;
+  transition: margin-right 0.25s ease, margin-bottom 0.25s ease, height 0.25s ease;
+  -webkit-overflow-scrolling: touch;
 }
 .panel-collapsed .panel { margin-right: -360px; }
 
 .panel-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .panel-header h1 { margin: 0; font-size: 20px; }
 .subtitle { margin: 4px 0 10px; font-size: 12px; color: var(--brand-sub); }
+.panel-links {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px;
+}
+.panel-link {
+  display: inline-flex; align-items: center;
+  padding: 4px 12px; border-radius: 999px;
+  background: #FFFDF8; border: 1.5px solid #EFD9B0;
+  color: #A5700B; font-size: 12px; font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 2px 0 #F5E6C8;
+}
+.panel-link:hover { color: #D95F41; border-color: #F4C97A; }
 
-.user-info { display: flex; align-items: center; gap: 6px; }
+.user-info { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .user-chip {
   display: inline-flex; align-items: center; gap: 6px;
   background: #fff; border: 1px solid var(--brand-line); border-radius: 999px;
@@ -526,6 +650,7 @@ onBeforeUnmount(() => {
 .stat-card {
   flex: 1; background: #fff; border: 1px solid var(--brand-line);
   border-radius: 14px; padding: 10px 6px; text-align: center;
+  min-width: 0;
 }
 .stat-num { font-size: 20px; font-weight: 700; color: var(--el-color-primary); }
 .stat-label { font-size: 12px; color: var(--brand-sub); margin-top: 2px; }
@@ -535,10 +660,10 @@ onBeforeUnmount(() => {
   background: #fff; border: 1px solid var(--brand-line);
   border-radius: 14px; padding: 12px; margin-bottom: 12px;
 }
-.year-summary-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.year-summary-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
 .section-title { font-size: 14px; font-weight: 700; }
 .year-select { width: 110px; }
-.year-nums { display: flex; gap: 16px; }
+.year-nums { display: flex; gap: 16px; flex-wrap: wrap; }
 .year-num { display: flex; align-items: baseline; gap: 4px; }
 .year-num strong { font-size: 22px; color: var(--el-color-primary); }
 .year-num span { font-size: 12px; color: var(--brand-sub); }
@@ -555,7 +680,7 @@ onBeforeUnmount(() => {
 .region-group { margin-bottom: 8px; }
 .region-head {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; cursor: pointer;
+  padding: 10px; cursor: pointer;
   background: #FBF3E6; border-radius: 12px;
 }
 .region-name { font-weight: 700; font-size: 14px; }
@@ -569,7 +694,7 @@ onBeforeUnmount(() => {
 }
 .city-head {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; cursor: pointer;
+  padding: 10px; cursor: pointer;
 }
 .city-badge {
   min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
@@ -578,42 +703,89 @@ onBeforeUnmount(() => {
   display: inline-flex; align-items: center; justify-content: center;
   box-sizing: border-box; flex-shrink: 0;
 }
-.city-name { font-size: 14px; font-weight: 600; }
+.city-name { font-size: 14px; font-weight: 600; min-width: 0; }
 .city-name em { font-style: normal; font-weight: 400; font-size: 12px; color: var(--brand-sub); }
-.city-country { flex: 1; font-size: 12px; color: var(--brand-sub); text-align: right; }
+.city-country { flex: 1; font-size: 12px; color: var(--brand-sub); text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .city-detail { padding: 4px 10px 10px; border-top: 1px dashed var(--brand-line); }
 .visit-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 0; font-size: 13px;
+  padding: 8px 0; font-size: 13px;
   border-bottom: 1px dashed var(--brand-line);
+  flex-wrap: wrap;
 }
 .visit-row:last-of-type { border-bottom: none; }
 .visit-date { color: var(--brand-sub); flex-shrink: 0; }
-.visit-note { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visit-note { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .visit-ops { display: inline-flex; gap: 4px; flex-shrink: 0; }
 .btn-icon {
-  width: 22px; height: 22px; border-radius: 6px;
+  width: 28px; height: 28px; border-radius: 8px;
   border: 1px solid var(--brand-line); background: var(--brand-cream);
-  color: var(--brand-sub); font-size: 12px; cursor: pointer; line-height: 1; padding: 0;
+  color: var(--brand-sub); font-size: 13px; cursor: pointer; line-height: 1; padding: 0;
 }
 .btn-icon:hover { border-color: var(--el-color-primary); color: var(--el-color-primary); }
-.edit-date { width: 140px; }
-.edit-note { flex: 1; }
+.edit-date { width: 140px; max-width: 100%; }
+.edit-note { flex: 1; min-width: 120px; }
 .visit-none { padding: 8px 0; font-size: 12px; color: var(--brand-sub); }
-.city-detail-actions { display: flex; gap: 8px; margin-top: 8px; }
+.city-detail-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 /* ---------- 明细弹窗 ---------- */
 .ys-trip-link { color: var(--el-color-primary); font-weight: 600; text-decoration: none; }
 .ys-trip-link:hover { text-decoration: underline; }
 
-/* ---------- 移动端适配 ---------- */
+/* ---------- 移动端：底部抽屉 ---------- */
 @media (max-width: 768px) {
   .map-layout { flex-direction: column; }
-  .map-container { flex: 1; min-height: 45vh; }
-  .panel { width: 100%; height: 55vh; border-left: none; border-top: 1px solid var(--brand-line); }
-  .panel-collapsed .panel { margin-right: 0; margin-bottom: calc(-55vh + 40px); }
-  .panel-toggle { top: auto; bottom: calc(55vh + 8px); right: 12px; }
-  .fab { right: 16px; bottom: calc(55vh + 52px); }
+  .map-container { flex: 1; min-height: 0; }
+
+  .panel {
+    width: 100%;
+    height: min(48dvh, 420px);
+    border-left: none;
+    border-top: 1px solid var(--brand-line);
+    border-radius: 18px 18px 0 0;
+    padding: 0 14px calc(14px + var(--safe-bottom));
+    box-shadow: 0 -8px 24px rgba(74, 64, 57, 0.12);
+    z-index: 850;
+  }
+  .panel-collapsed .panel {
+    margin-right: 0;
+    height: calc(52px + var(--safe-bottom));
+    overflow: hidden;
+  }
+  .panel-handle {
+    display: flex; flex-direction: column; align-items: center;
+    position: sticky; top: 0; z-index: 2;
+    background: linear-gradient(180deg, var(--brand-cream) 70%, transparent);
+    border-radius: 18px 18px 0 0;
+  }
+
+  .panel-toggle {
+    top: auto;
+    bottom: calc(min(48dvh, 420px) + 12px);
+    right: calc(12px + var(--safe-right));
+    height: 40px;
+    padding: 0 14px 0 10px;
+  }
+  .panel-collapsed .panel-toggle {
+    bottom: calc(66px + var(--safe-bottom));
+    right: calc(12px + var(--safe-right));
+  }
+  /* 手机端箭头改为上下方向 */
+  .panel-toggle-icon::before {
+    transform: rotate(45deg); /* ∨ 收起时指向下 */
+    margin: -2px 0 0 0;
+  }
+  .panel-collapsed .panel-toggle-icon { transform: rotate(180deg); } /* ∧ 展开 */
+
+  .panel-header h1 { font-size: 18px; }
+  .stats { gap: 8px; }
+  .stat-num { font-size: 18px; }
+  .year-num strong { font-size: 18px; }
+  .city-country { display: none; }
+  .region-cities { padding-left: 4px; }
+  .city-detail-actions :deep(.el-button) { flex: 1; }
 }
 </style>

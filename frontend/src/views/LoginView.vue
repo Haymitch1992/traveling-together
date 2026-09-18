@@ -283,4 +283,24 @@ async function enterAsGuest() {
   font-weight: 700; letter-spacing: 1px; font-size: 15px;
 }
 .guest-btn:hover, .guest-btn:focus { background: #6C9C57; color: #ffffff; }
+
+@media (max-width: 480px) {
+  .login-page {
+    align-items: flex-start;
+    min-height: 100dvh;
+    padding: calc(12px + var(--safe-top)) 12px calc(20px + var(--safe-bottom));
+  }
+  .login-card {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px;
+    border-width: 2px;
+  }
+  .login-title { font-size: 28px; letter-spacing: 2px; margin-top: 10px; }
+  .login-subtitle { font-size: 13px; padding: 0 12px; }
+  .login-body { padding: 0 18px 22px; }
+  .code-row { flex-direction: column; gap: 10px; }
+  .send-code-btn { width: 100%; }
+  .login-scene-img { aspect-ratio: 16 / 10; object-position: center 62%; }
+}
 </style>

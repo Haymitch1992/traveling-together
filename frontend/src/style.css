@@ -12,39 +12,206 @@
   --brand-cream: #FFFDF7;
   --brand-line: #EFE6D8;
   --brand-bg: linear-gradient(180deg, #E7F4FC 0%, #FDF6E3 60%, #FDF3D8 100%);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
+
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0; padding: 0; height: 100%;
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
   color: var(--brand-ink);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: hidden;
 }
 html { background: var(--brand-bg) fixed; }
-#app { height: 100%; }
+#app { height: 100%; min-height: 100dvh; }
 
-/* 地图动物标记 */
+/* 地图动物标记 · 3D 立体大头针 */
 .map-animal {
-  position: relative; cursor: pointer; transform-origin: bottom center;
-  filter: drop-shadow(1px 3px 3px rgba(74, 64, 57, 0.35));
-  transition: transform 0.15s ease;
+  position: relative;
+  cursor: pointer;
+  width: 56px;
+  height: 72px;
+  transform: scale(var(--pin-scale, 1));
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 10px 8px rgba(74, 64, 57, 0.28));
+  transition: transform 0.18s ease;
+  perspective: 220px;
 }
-.map-animal:hover { transform: scale(1.15) !important; }
+.map-animal:hover {
+  transform: scale(calc(var(--pin-scale, 1) * 1.12)) !important;
+}
+.map-animal-float {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  width: 48px;
+  margin-left: -24px;
+  transform-style: preserve-3d;
+  animation: map-pin-bob 2.8s ease-in-out infinite;
+}
+.map-animal-head {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  transform: rotateX(18deg) translateZ(8px);
+  transform-origin: 50% 100%;
+  background:
+    radial-gradient(circle at 32% 28%, #ffffff 0%, #FFF8EC 42%, #F3E4C8 100%);
+  box-shadow:
+    inset 0 -6px 10px rgba(120, 90, 50, 0.18),
+    inset 0 4px 8px rgba(255, 255, 255, 0.85),
+    0 0 0 3px #fff,
+    0 6px 0 rgba(180, 140, 80, 0.22),
+    0 10px 16px rgba(74, 64, 57, 0.28);
+}
+.map-animal-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  border-radius: 50%;
+  pointer-events: none;
+  user-select: none;
+}
+.map-animal-shine {
+  position: absolute;
+  inset: 3px auto auto 5px;
+  width: 16px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+  pointer-events: none;
+  transform: rotate(-18deg);
+}
 .map-animal-badge {
-  position: absolute; top: -4px; right: -6px;
-  min-width: 17px; height: 17px; padding: 0 4px;
-  border-radius: 999px; border: 1.5px solid #fff;
-  color: #fff; font-size: 10px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: var(--pin-color, #E76F51);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-sizing: border-box;
+  z-index: 2;
+  box-shadow: 0 3px 6px rgba(74, 64, 57, 0.28);
+}
+.map-animal-stem {
+  position: relative;
+  width: 0;
+  height: 0;
+  margin: -2px auto 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 16px solid #E76F51;
+  filter: drop-shadow(0 2px 2px rgba(74, 64, 57, 0.25));
+}
+.map-animal-stem::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: -16px;
+  width: 5px;
+  height: 16px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.35), transparent);
+  clip-path: polygon(0 0, 100% 0, 40% 100%, 0 100%);
+  pointer-events: none;
+}
+.map-animal-stem::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #FF8F70, #C44A30 70%);
+  box-shadow: 0 1px 2px rgba(74, 64, 57, 0.35);
+}
+.map-animal-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 28px;
+  height: 8px;
+  margin-left: -14px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(74, 64, 57, 0.35) 0%, rgba(74, 64, 57, 0) 72%);
+  animation: map-pin-shadow 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes map-pin-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes map-pin-shadow {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(0.82); opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-animal-float,
+  .map-animal-shadow { animation: none; }
 }
 
 /* 通用页面容器 */
-.page-main { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
+.page-main {
+  max-width: 960px; margin: 0 auto;
+  padding: 20px 16px calc(60px + var(--safe-bottom));
+}
 .info-trip-link { color: #E76F51; font-size: 13px; font-weight: 600; text-decoration: none; }
 .info-trip-link:hover { text-decoration: underline; }
-.info-win { min-width: 180px; }
+.info-win { min-width: 180px; max-width: min(280px, 80vw); }
 .info-title { font-size: 15px; font-weight: 700; }
 .info-title span { font-weight: 400; color: var(--brand-sub); font-size: 13px; }
 .info-sub { color: var(--brand-sub); font-size: 13px; margin: 4px 0 8px; }
 .info-history { list-style: none; margin: 0; padding: 0; max-height: 140px; overflow-y: auto; }
 .info-history li { font-size: 13px; padding: 3px 0; border-top: 1px dashed var(--brand-line); }
+
+/* ---------- 全站移动端 ---------- */
+@media (max-width: 768px) {
+  .page-main { padding: 14px 12px calc(40px + var(--safe-bottom)); }
+
+  .map-animal { width: 46px; height: 60px; }
+  .map-animal-float { width: 40px; margin-left: -20px; }
+  .map-animal-head { width: 40px; height: 40px; }
+  .map-animal-stem { border-left-width: 7px; border-right-width: 7px; border-top-width: 14px; }
+  .map-animal-shadow { width: 24px; margin-left: -12px; }
+
+  /* 弹窗在窄屏接近全宽，避免横向溢出 */
+  .el-dialog {
+    --el-dialog-margin-top: 8vh !important;
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  .el-dialog__body { padding: 12px 14px 18px; }
+  .el-overlay-dialog { padding: 0 0 var(--safe-bottom); }
+
+  /* 表格可横向滑动 */
+  .el-table { width: 100%; }
+  .el-message-box { width: calc(100vw - 32px) !important; max-width: 420px; }
+
+  /* 触控设备：照片删除按钮常显 */
+  @media (hover: none) {
+    .photo-del { opacity: 1 !important; }
+  }
+}

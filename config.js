@@ -3,7 +3,8 @@ const fs = require('fs');
 
 const configPath = path.join(__dirname, 'config.json');
 let config = { amapKey: '', amapSecurityCode: '', deepseekKey: '', deepseekModel: 'deepseek-chat',
-  smtpHost: 'smtp.163.com', smtpPort: 465, smtpUser: '', smtpPass: '', smtpFrom: '' };
+  smtpHost: 'smtp.163.com', smtpPort: 465, smtpUser: '', smtpPass: '', smtpFrom: '',
+  authorEmail: 'wangzhiwei3306@163.com' };
 try {
   if (fs.existsSync(configPath)) {
     config = { ...config, ...JSON.parse(fs.readFileSync(configPath, 'utf8')) };
@@ -23,6 +24,7 @@ const ENV_MAP = {
   smtpUser: 'SMTP_USER',
   smtpPass: 'SMTP_PASS',
   smtpFrom: 'SMTP_FROM',
+  authorEmail: 'AUTHOR_EMAIL',
 };
 for (const [key, env] of Object.entries(ENV_MAP)) {
   if (process.env[env]) config[key] = key === 'smtpPort' ? Number(process.env[env]) : process.env[env];

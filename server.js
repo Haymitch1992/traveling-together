@@ -136,7 +136,12 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/me', auth.requireAuth, (req, res) => {
-  res.json({ username: req.auth.username, isGuest: req.auth.isGuest });
+  if (req.auth.isGuest) {
+    return res.json({ username: req.auth.username, isGuest: true, avatarUrl: null });
+  }
+  const u = db.prepare('SELECT avatar FROM users WHERE id = ?').get(req.auth.userId);
+  const avatarUrl = u && u.avatar ? `/uploads/avatars/${req.auth.userId}/${u.avatar}` : null;
+  res.json({ username: req.auth.username, isGuest: false, avatarUrl });
 });
 
 // 修改密码（游客禁止）
@@ -237,13 +242,63 @@ app.delete('/api/visits/:id', auth.requireAuth, auth.requireWrite, (req, res) =>
   res.json({ ok: true });
 });
 
+// 删除城市 = 清除该城市在指定年份（或全部）发生的旅行项目 + 对应到访记录
 app.delete('/api/cities/:id', auth.requireAuth, auth.requireWrite, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return bad(res, '城市 id 无效');
   const city = findOwnCity(id, req.auth.userId);
   if (!city) return notFound(res, '城市不存在');
-  db.prepare('DELETE FROM cities WHERE id = ?').run(id);
-  res.json({ ok: true });
+
+  const userId = req.auth.userId;
+  const year = req.query.year === 'all' || !req.query.year
+    ? null
+    : (/^\d{4}$/.test(req.query.year) ? req.query.year : null);
+  if (req.query.year && req.query.year !== 'all' && !year) return bad(res, '年份无效');
+
+  const trips = year
+    ? db.prepare(`
+      SELECT DISTINCT t.* FROM trips t
+      LEFT JOIN trip_destinations d ON d.trip_id = t.id
+      WHERE t.user_id = ? AND substr(t.depart_date, 1, 4) = ?
+        AND (d.name = ? OR t.dest_name = ?)
+    `).all(userId, year, city.name, city.name)
+    : db.prepare(`
+      SELECT DISTINCT t.* FROM trips t
+      LEFT JOIN trip_destinations d ON d.trip_id = t.id
+      WHERE t.user_id = ?
+        AND (d.name = ? OR t.dest_name = ?)
+    `).all(userId, city.name, city.name);
+
+  const uploadRoot = path.join(__dirname, 'data', 'uploads');
+  const delVisitByTrip = db.prepare(`
+    DELETE FROM visits WHERE id IN (
+      SELECT v.id FROM visits v
+      JOIN cities c ON c.id = v.city_id
+      WHERE c.user_id = ? AND v.note = ? AND v.visited_at = ?
+    )
+  `);
+
+  for (const trip of trips) {
+    delVisitByTrip.run(userId, `旅行项目：${trip.title}`, trip.depart_date);
+    db.prepare('DELETE FROM trips WHERE id = ?').run(trip.id);
+  }
+  if (year) {
+    db.prepare('DELETE FROM visits WHERE city_id = ? AND substr(visited_at, 1, 4) = ?').run(city.id, year);
+  } else {
+    db.prepare('DELETE FROM visits WHERE city_id = ?').run(city.id);
+  }
+  const left = db.prepare('SELECT COUNT(*) AS n FROM visits WHERE city_id = ?').get(city.id).n;
+  if (left === 0) db.prepare('DELETE FROM cities WHERE id = ?').run(city.id);
+
+  for (const trip of trips) {
+    fs.rmSync(path.join(uploadRoot, String(trip.id)), { recursive: true, force: true });
+  }
+
+  res.json({
+    ok: true,
+    deletedTrips: trips.length,
+    cityRemoved: !db.prepare('SELECT id FROM cities WHERE id = ?').get(city.id),
+  });
 });
 
 app.get('/api/stats', auth.requireAuth, (req, res) => {
@@ -305,7 +360,12 @@ app.get('/api/summary/yearly', auth.requireAuth, (req, res) => {
     SELECT id, title, dest_name, depart_date, days, distance_km
     FROM trips WHERE user_id = ?${tCond}
     ORDER BY depart_date
-  `).all(...p);
+  `).all(...p).map((t) => ({
+    ...t,
+    destinations: db.prepare(
+      'SELECT name, lat, lng, country FROM trip_destinations WHERE trip_id = ? ORDER BY sort_order, id'
+    ).all(t.id),
+  }));
 
   const oneWayKm = Math.round(tripStats.km * 10) / 10;
   res.json({
@@ -315,6 +375,70 @@ app.get('/api/summary/yearly', auth.requireAuth, (req, res) => {
     oneWayKm, totalKm: Math.round(oneWayKm * 2 * 10) / 10,
     cities: cityList, trips: tripList,
   });
+});
+
+// ---------- 留言板（公开：页面提交后发到作者邮箱） ----------
+function clientIp(req) {
+  const xf = req.headers['x-forwarded-for'];
+  if (typeof xf === 'string' && xf.trim()) return xf.split(',')[0].trim();
+  return req.socket?.remoteAddress || '';
+}
+
+app.get('/api/guestbook', (req, res) => {
+  const rows = db.prepare(`
+    SELECT id, name, content, created_at FROM guestbook
+    ORDER BY id DESC LIMIT 50
+  `).all();
+  res.json(rows);
+});
+
+app.post('/api/guestbook', async (req, res) => {
+  const body = req.body || {};
+  const name = String(body.name || '').trim();
+  const contact = String(body.contact || '').trim();
+  const content = String(body.content || '').trim();
+  if (!name || name.length > 20) return bad(res, '昵称必填，且不超过 20 字');
+  if (!content || content.length > 500) return bad(res, '留言内容必填，且不超过 500 字');
+  if (contact && contact.length > 80) return bad(res, '联系方式不超过 80 字');
+  if (contact && contact.includes('@') && !EMAIL_RE.test(contact)) return bad(res, '联系邮箱格式不正确');
+
+  const ip = clientIp(req);
+  const recent = db.prepare(`
+    SELECT id FROM guestbook
+    WHERE (ip = ? AND ip != '') AND created_at > datetime('now', '-60 seconds')
+  `).get(ip);
+  if (recent) return res.status(429).json({ error: '发送太频繁，请稍后再试' });
+
+  let userId = null;
+  const cookies = (() => {
+    const header = req.headers.cookie || '';
+    const out = {};
+    header.split(';').forEach((pair) => {
+      const idx = pair.indexOf('=');
+      if (idx > 0) out[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim();
+    });
+    return out;
+  })();
+  const session = auth.getSession(cookies.session);
+  if (session && !session.is_guest) userId = session.user_id;
+
+  const r = db.prepare(
+    'INSERT INTO guestbook (name, contact, content, user_id, ip) VALUES (?, ?, ?, ?, ?)'
+  ).run(name, contact || null, content, userId, ip || null);
+  const row = db.prepare('SELECT id, name, content, created_at FROM guestbook WHERE id = ?').get(r.lastInsertRowid);
+
+  if (!mail.smtpReady()) {
+    console.log(`[dev] 留言板 → ${mail.authorInbox()}\n昵称: ${name}\n联系: ${contact || '无'}\n${content}`);
+    return res.status(201).json({ ...row, mailed: false, devMode: true });
+  }
+  try {
+    await mail.sendGuestbookMessage({ name, contact, content });
+    res.status(201).json({ ...row, mailed: true });
+  } catch (e) {
+    console.error('留言邮件发送失败:', e.message);
+    // 留言已入库，邮件失败也告知用户
+    res.status(201).json({ ...row, mailed: false, error: '留言已保存，但邮件通知失败，作者稍后仍可在后台看到' });
+  }
 });
 
 // SPA fallback：非 API/上传资源的 GET 一律回 index.html（Vue history 路由）

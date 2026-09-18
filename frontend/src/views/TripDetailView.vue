@@ -29,38 +29,53 @@
         </template>
         <div class="info-grid">
           <div class="info-item"><span>出发地</span><strong>{{ trip.origin_name || '未设置' }}</strong></div>
-          <div class="info-item"><span>目的地</span><strong>{{ trip.dest_name }}</strong></div>
+          <div class="info-item"><span>目的地</span><strong>{{ destDisplay }}</strong></div>
           <div class="info-item"><span>出发时间</span><strong>{{ trip.depart_date }}</strong></div>
           <div class="info-item"><span>旅行天数</span><strong>{{ trip.days }} 天</strong></div>
           <div class="info-item"><span>出行方式</span><strong>{{ trip.transport }}</strong></div>
           <div class="info-item"><span>单程距离</span><strong>{{ trip.distance_km != null ? trip.distance_km + ' km' : '未知' }}</strong></div>
-          <div class="info-item"><span>预算</span><strong>{{ trip.budget != null ? fmt(trip.budget) : '未设' }}</strong></div>
+          <div class="info-item"><span>预算</span><strong>{{ budgetDisplay }}</strong></div>
           <div class="info-item"><span>已花费</span><strong>{{ fmt(trip.settlement.total) }}</strong></div>
         </div>
       </el-card>
 
-      <!-- ② 同行人 -->
+      <!-- ② 同行人（与发起项目同一套逻辑：我默认同行 + 常客快选 + 回车添加） -->
       <el-card class="block-card" shadow="never">
         <template #header><span class="card-title">同行人</span></template>
-        <div class="member-list">
-          <el-tag
-            v-for="m in trip.members"
-            :key="m.id"
-            size="large"
-            :closable="!authState.isGuest"
-            :disable-transitions="true"
-            @close="removeMember(m)"
-          >{{ m.name }}</el-tag>
-        </div>
-        <div v-if="!authState.isGuest" class="inline-add">
-          <el-input
-            v-model="memberInput"
-            placeholder="添加同行人"
-            maxlength="20"
-            style="max-width: 220px"
-            @keyup.enter="addMember"
-          />
-          <el-button size="small" type="primary" @click="addMember">添加</el-button>
+        <template v-if="!authState.isGuest">
+          <div class="form-label">同行人（我默认同行，回车添加其他伙伴）</div>
+          <div v-if="quickPicks.length" class="member-quick">
+            <span class="quick-label">常客：</span>
+            <button
+              v-for="c in quickPicks"
+              :key="c.name"
+              type="button"
+              class="quick-chip"
+              @click="addQuick(c.name)"
+            >{{ c.name }} <em>{{ c.n }}次</em></button>
+          </div>
+          <div class="tag-input">
+            <el-tag round class="member-tag me-tag">我</el-tag>
+            <el-tag
+              v-for="m in otherMembers"
+              :key="m.id"
+              closable
+              round
+              class="member-tag"
+              :disable-transitions="true"
+              @close="removeMember(m)"
+            >{{ m.name }}</el-tag>
+            <input
+              v-model="memberInput"
+              type="text"
+              placeholder="输入名字后回车"
+              maxlength="20"
+              @keydown.enter.prevent="addMember"
+            >
+          </div>
+        </template>
+        <div v-else class="member-list">
+          <el-tag v-for="m in trip.members" :key="m.id" size="large" :disable-transitions="true">{{ m.name }}</el-tag>
         </div>
       </el-card>
 
@@ -72,7 +87,7 @@
           <div class="settle-summary">
             <div class="stat-card"><div class="stat-num">{{ fmt(trip.settlement.total) }}</div><div class="stat-label">总花费</div></div>
             <div class="stat-card"><div class="stat-num">{{ fmt(trip.settlement.perPerson) }}</div><div class="stat-label">人均</div></div>
-            <div class="stat-card"><div class="stat-num">{{ trip.budget != null ? fmt(trip.budget) : '—' }}</div><div class="stat-label">预算</div></div>
+            <div class="stat-card"><div class="stat-num">{{ trip.budget != null ? fmt(trip.budget) : '—' }}</div><div class="stat-label">预算{{ budgetTierLabel ? '·' + budgetTierLabel : '' }}</div></div>
           </div>
           <el-table :data="trip.settlement.balances" size="small" class="settle-table">
             <el-table-column prop="name" label="成员" />
@@ -89,15 +104,52 @@
             </el-table-column>
           </el-table>
           <div class="settle-transfers">
-            <div class="sub-label">转账建议</div>
-            <ul>
-              <template v-if="trip.settlement.transfers.length">
-                <li v-for="(t, i) in trip.settlement.transfers" :key="i">
-                  {{ t.from }} → {{ t.to }}：<strong>{{ fmt(t.amount) }}</strong>
-                </li>
-              </template>
-              <li v-else>当前无需转账</li>
-            </ul>
+            <div class="transfer-head">
+              <div>
+                <div class="transfer-title">转账建议</div>
+                <p class="transfer-sub">谁该补给谁，一眼算清</p>
+              </div>
+              <span v-if="trip.settlement.transfers.length" class="transfer-count">
+                {{ trip.settlement.transfers.length }} 笔
+              </span>
+            </div>
+
+            <div v-if="trip.settlement.transfers.length" class="transfer-list">
+              <div
+                v-for="(t, i) in trip.settlement.transfers"
+                :key="i"
+                class="transfer-card"
+                :style="{ '--delay': (i * 0.06) + 's' }"
+              >
+                <div class="transfer-who">
+                  <div class="transfer-person from">
+                    <img class="transfer-avatar" :src="animalIconFor(t.from)" :alt="t.from" draggable="false" />
+                    <span class="transfer-name">{{ t.from }}</span>
+                    <em>应付</em>
+                  </div>
+                  <div class="transfer-flow" aria-hidden="true">
+                    <span class="transfer-arrow-line"></span>
+                    <span class="transfer-arrow-tip">→</span>
+                  </div>
+                  <div class="transfer-person to">
+                    <img class="transfer-avatar" :src="animalIconFor(t.to)" :alt="t.to" draggable="false" />
+                    <span class="transfer-name">{{ t.to }}</span>
+                    <em>应收</em>
+                  </div>
+                </div>
+                <div class="transfer-amount">
+                  <span class="transfer-amount-label">转账</span>
+                  <strong>{{ fmt(t.amount) }}</strong>
+                </div>
+              </div>
+            </div>
+            <div v-else class="transfer-empty">
+              <span class="transfer-empty-icon" aria-hidden="true">✓</span>
+              <div>
+                <strong>账目刚好平了</strong>
+                <p>当前无需互相转账</p>
+              </div>
+            </div>
           </div>
         </template>
 
@@ -218,51 +270,38 @@
       <div class="empty-state">旅行项目不存在或无权访问</div>
     </main>
 
-    <!-- 编辑项目弹窗 -->
-    <el-dialog v-model="editVisible" title="编辑项目" width="760px" @opened="onEditDialogOpened">
-      <div class="edit-form-grid">
-        <div class="form-item">
-          <div class="sub-label">旅行项目名</div>
-          <el-input v-model="editForm.title" maxlength="50" />
-        </div>
-        <div class="form-item">
-          <div class="sub-label">出发时间</div>
-          <el-date-picker v-model="editForm.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
-        </div>
-        <div class="form-item">
-          <div class="sub-label">旅行天数</div>
-          <el-input-number v-model="editForm.days" :min="1" :max="365" style="width: 100%" />
-        </div>
-        <div class="form-item">
-          <div class="sub-label">出行方式</div>
-          <el-select v-model="editForm.transport" style="width: 100%" @change="recalcEditDistance">
-            <el-option v-for="t in TRANSPORTS" :key="t" :label="t" :value="t" />
-          </el-select>
-        </div>
-        <div class="form-item">
-          <div class="sub-label">总预算（元）</div>
-          <el-input-number v-model="editForm.budget" :min="0" :controls="false" :precision="2" placeholder="未设" style="width: 100%" />
-        </div>
-        <div class="form-item">
-          <div class="sub-label">单程距离（公里）</div>
-          <el-input-number v-model="editForm.distance" :min="0" :controls="false" :precision="1" style="width: 100%" />
-        </div>
-      </div>
-      <div class="form-block">
-        <div class="sub-label">目的地（在地图上点击重新选点）</div>
-        <div class="dest-picker">
-          <div class="dest-side">
-            <div class="sub-label">目的地名称</div>
-            <el-input v-model="editForm.destName" maxlength="50" />
-            <div class="dest-coord">{{ editCoordText }}</div>
-            <div class="distance-hint">{{ editDistanceHint }}</div>
-          </div>
-          <div ref="editMapEl" class="picker-map"></div>
-        </div>
-      </div>
+    <!-- 编辑项目：复用新建表单模版 -->
+    <el-dialog
+      v-model="editVisible"
+      title="编辑项目"
+      :width="isMobile ? '100%' : '880px'"
+      :fullscreen="isMobile"
+      class="edit-dialog"
+      @opened="onEditOpened"
+      @closed="destroyEditMap"
+    >
+      <CreateTripForm
+        ref="editFormRef"
+        v-bind="editFormBind"
+        @home-input="onEditHomeInput"
+        @pick-home="pickEditHome"
+        @add-member="addEditMember"
+        @remove-member="(i) => editMembers.splice(i, 1)"
+        @add-quick="addEditQuick"
+        @dest-input="onEditDestInput"
+        @pick-dest="pickEditDest"
+        @add-dest-query="addEditDestFromQuery"
+        @remove-dest="removeEditDest"
+        @focus-dest="focusEditDest"
+        @transport-change="recalcEditDistance"
+        @update:homeQuery="editHomeQuery = $event"
+        @update:memberInput="editMemberInput = $event"
+        @update:budgetTier="editBudgetTier = $event"
+        @update:destQuery="editDestQuery = $event"
+      />
       <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="editSaving" @click="saveEdit">保存</el-button>
+        <el-button size="large" round @click="editVisible = false">取消</el-button>
+        <el-button type="primary" size="large" round :loading="editSaving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
@@ -277,12 +316,15 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { get, post, put, del } from '../api';
 import { loadAmap, haversineKm } from '../amap';
 import { authState, fetchMe, logout } from '../auth';
+import { calcBudget, budgetHint, matchTierKey, tierByKey } from '../budget';
+import { animalIconFor } from '../animals';
+import CreateTripForm from '../components/CreateTripForm.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -293,9 +335,28 @@ const CATEGORIES = ['餐饮', '住宿', '交通', '门票', '购物', '其他'];
 
 const trip = ref(null);
 const loadError = ref(false);
+const companions = ref([]); // [{name, n}]
 
 // ---------- 工具 ----------
 function fmt(n) { return '¥' + Number(n).toFixed(2); }
+
+const budgetDisplay = computed(() => {
+  if (!trip.value || trip.value.budget == null) return '未设';
+  const people = trip.value.members?.length || 1;
+  const tier = tierByKey(matchTierKey(trip.value.budget, people, trip.value.days));
+  return `${fmt(trip.value.budget)} · ${tier.label}`;
+});
+const destDisplay = computed(() => {
+  if (!trip.value) return '';
+  const list = trip.value.destinations;
+  if (list && list.length) return list.map((d) => d.name).join(' · ');
+  return trip.value.dest_name;
+});
+const budgetTierLabel = computed(() => {
+  if (!trip.value || trip.value.budget == null) return '';
+  const people = trip.value.members?.length || 1;
+  return tierByKey(matchTierKey(trip.value.budget, people, trip.value.days)).label;
+});
 
 function today() {
   const d = new Date();
@@ -303,92 +364,380 @@ function today() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// ---------- 基本信息编辑 ----------
+// ---------- 基本信息编辑（复用新建表单模版） ----------
 const editVisible = ref(false);
+const isMobile = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches);
+let mq;
+function onMqChange(e) { isMobile.value = e.matches; }
 const editSaving = ref(false);
+const editFormRef = ref(null);
 const editForm = reactive({
   title: '', date: '', days: 1, transport: '驾车',
-  budget: undefined, distance: undefined, destName: '',
 });
-const editCoordText = ref('');
+const editHomeQuery = ref('');
+const editHomeResults = ref([]);
+const editHomeShowResults = ref(false);
+const editMembers = ref([]);
+const editMemberInput = ref('');
+const editDestinations = ref([]);
+const editDestQuery = ref('');
+const editDestResults = ref([]);
+const editDestShowResults = ref(false);
+const editActiveDestIndex = ref(-1);
+const editBudgetTier = ref('chill');
+const editCoordText = ref('尚未添加地点');
 const editDistanceHint = ref('');
-const editMapEl = ref(null);
+let editComputedDistance = null;
+let editDistanceToken = 0;
 let editMap = null;
-let editMarker = null;
-let editPoint = null;
+let editOriginMarker = null;
+let editDestMarkers = [];
 let amapReady = false;
+let editProfile = null; // { home_name, home_lat, home_lng }
 
-function openEdit() {
+const editPeopleCount = computed(() => 1 + editMembers.value.length);
+const editEstimatedBudget = computed(() =>
+  calcBudget(editPeopleCount.value, editForm.days, tierByKey(editBudgetTier.value).rate));
+const editBudgetHintText = computed(() =>
+  budgetHint(editPeopleCount.value, editForm.days, tierByKey(editBudgetTier.value).rate));
+const editQuickPicks = computed(() =>
+  companions.value.filter((c) => c.name !== '我' && !editMembers.value.includes(c.name)));
+
+const editFormBind = computed(() => ({
+  form: editForm,
+  transports: TRANSPORTS,
+  homeQuery: editHomeQuery.value,
+  homeResults: editHomeResults.value,
+  homeShowResults: editHomeShowResults.value,
+  members: editMembers.value,
+  memberInput: editMemberInput.value,
+  quickPicks: editQuickPicks.value,
+  budgetTier: editBudgetTier.value,
+  estimatedBudget: editEstimatedBudget.value,
+  budgetCalcHint: editBudgetHintText.value,
+  destinations: editDestinations.value,
+  destQuery: editDestQuery.value,
+  destResults: editDestResults.value,
+  destShowResults: editDestShowResults.value,
+  destCoordText: editCoordText.value,
+  distanceHint: editDistanceHint.value,
+  activeDestIndex: editActiveDestIndex.value,
+}));
+
+function debounce(fn, ms) {
+  let t = null;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
+function searchCities(q, resultsRef, showRef) {
+  return get(`/api/cities/search?q=${encodeURIComponent(q)}`)
+    .then((list) => { resultsRef.value = list; showRef.value = true; })
+    .catch(() => {});
+}
+
+const doEditHomeSearch = debounce((q) => searchCities(q, editHomeResults, editHomeShowResults), 300);
+const doEditDestSearch = debounce((q) => searchCities(q, editDestResults, editDestShowResults), 300);
+
+function onEditHomeInput(v) {
+  const q = (v || '').trim();
+  if (!q) { editHomeShowResults.value = false; return; }
+  doEditHomeSearch(q);
+}
+
+function onEditDestInput(v) {
+  const q = (v || '').trim();
+  if (!q) { editDestShowResults.value = false; return; }
+  doEditDestSearch(q);
+}
+
+async function pickEditHome(c) {
+  editHomeShowResults.value = false;
+  editHomeQuery.value = c.name;
+  try {
+    editProfile = await put('/api/profile', { home_name: c.name, home_lat: c.lat, home_lng: c.lng });
+    ElMessage.success(`出发城市已设为 ${c.name}`);
+    if (editMap && window.AMap) {
+      if (editOriginMarker) editOriginMarker.setMap(null);
+      editOriginMarker = new AMap.Marker({
+        position: [c.lng, c.lat],
+        label: { content: '出发地', direction: 'top' },
+      });
+      editOriginMarker.setMap(editMap);
+    }
+    recalcEditDistance();
+  } catch (_) { /* 已提示 */ }
+}
+
+function addEditMember() {
+  const name = editMemberInput.value.trim();
+  editMemberInput.value = '';
+  if (!name) return;
+  if (name === '我') { ElMessage.warning('我默认同行，无需添加'); return; }
+  if (editMembers.value.includes(name)) { ElMessage.error('该成员已添加'); return; }
+  editMembers.value.push(name);
+}
+
+function addEditQuick(name) {
+  if (!editMembers.value.includes(name)) editMembers.value.push(name);
+}
+
+function updateEditDestText() {
+  const n = editDestinations.value.length;
+  editCoordText.value = n ? `已添加 ${n} 个地点（地图点选可继续添加）` : '尚未添加地点';
+}
+
+function sameDest(a, b) {
+  return a.name === b.name
+    && Math.abs(a.lat - b.lat) < 0.0001
+    && Math.abs(a.lng - b.lng) < 0.0001;
+}
+
+function addEditDest(d) {
+  if (editDestinations.value.some((x) => sameDest(x, d))) {
+    ElMessage.warning('该地点已添加');
+    return;
+  }
+  if (editDestinations.value.length >= 20) {
+    ElMessage.error('目的地最多 20 个');
+    return;
+  }
+  editDestinations.value.push({
+    name: d.name, lat: d.lat, lng: d.lng, country: d.country || '未知',
+  });
+  editActiveDestIndex.value = editDestinations.value.length - 1;
+  updateEditDestText();
+  syncEditMarkers();
+  recalcEditDistance();
+}
+
+function removeEditDest(idx) {
+  editDestinations.value.splice(idx, 1);
+  if (editActiveDestIndex.value >= editDestinations.value.length) {
+    editActiveDestIndex.value = editDestinations.value.length - 1;
+  }
+  updateEditDestText();
+  syncEditMarkers();
+  recalcEditDistance();
+}
+
+function focusEditDest(idx) {
+  editActiveDestIndex.value = idx;
+  const d = editDestinations.value[idx];
+  if (d && editMap) editMap.setCenter([d.lng, d.lat]);
+}
+
+function pickEditDest(c) {
+  editDestShowResults.value = false;
+  editDestQuery.value = '';
+  addEditDest({ name: c.name, lat: c.lat, lng: c.lng, country: c.country || '未知' });
+}
+
+function addEditDestFromQuery() {
+  const q = editDestQuery.value.trim();
+  if (!q) return;
+  if (editDestResults.value.length === 1) {
+    pickEditDest(editDestResults.value[0]);
+    return;
+  }
+  ElMessage.info('请从搜索结果中选择，或直接在地图上点选');
+}
+
+function destroyEditMap() {
+  if (editMap) {
+    editMap.destroy();
+    editMap = null;
+  }
+  editDestMarkers = [];
+  editOriginMarker = null;
+}
+
+function clearEditMarkers() {
+  editDestMarkers.forEach((m) => m.setMap(null));
+  editDestMarkers = [];
+}
+
+function syncEditMarkers() {
+  if (!editMap || !window.AMap) return;
+  clearEditMarkers();
+  editDestinations.value.forEach((d, idx) => {
+    const marker = new AMap.Marker({
+      position: [d.lng, d.lat],
+      draggable: true,
+      label: { content: `${idx + 1}.${d.name}`, direction: 'top' },
+    });
+    marker.on('dragend', (e) => {
+      editDestinations.value[idx] = {
+        ...editDestinations.value[idx],
+        lat: e.lnglat.getLat(),
+        lng: e.lnglat.getLng(),
+      };
+      recalcEditDistance();
+    });
+    marker.on('click', () => { editActiveDestIndex.value = idx; });
+    marker.setMap(editMap);
+    editDestMarkers.push(marker);
+  });
+  if (editDestinations.value.length === 1) {
+    editMap.setCenter([editDestinations.value[0].lng, editDestinations.value[0].lat]);
+  } else if (editDestinations.value.length > 1) {
+    editMap.setFitView(editDestMarkers, false, [40, 40, 40, 40]);
+  }
+}
+
+async function waitForEditMapEl(retries = 20) {
+  for (let i = 0; i < retries; i++) {
+    await nextTick();
+    const exposed = editFormRef.value?.mapEl;
+    const node = exposed && (exposed.value !== undefined ? exposed.value : exposed);
+    if (node && node.clientWidth > 0) return node;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  const exposed = editFormRef.value?.mapEl;
+  return exposed && (exposed.value !== undefined ? exposed.value : exposed);
+}
+
+async function ensureEditMap() {
+  if (editMap) {
+    editMap.resize();
+    return;
+  }
+  if (!amapReady) {
+    amapReady = await loadAmap(['AMap.Driving', 'AMap.Riding', 'AMap.Walking']);
+  }
+  if (!amapReady || !window.AMap) return;
+  const node = await waitForEditMapEl();
+  if (!node) return;
+
+  const origin = editProfile && editProfile.home_lat != null
+    ? { lat: editProfile.home_lat, lng: editProfile.home_lng }
+    : (trip.value?.origin_lat != null
+      ? { lat: trip.value.origin_lat, lng: trip.value.origin_lng }
+      : null);
+  const center = editDestinations.value[0]
+    ? [editDestinations.value[0].lng, editDestinations.value[0].lat]
+    : (origin ? [origin.lng, origin.lat] : [105, 35]);
+
+  editMap = new AMap.Map(node, { zoom: 5, center });
+  if (origin) {
+    editOriginMarker = new AMap.Marker({
+      position: [origin.lng, origin.lat],
+      label: { content: '出发地', direction: 'top' },
+    });
+    editOriginMarker.setMap(editMap);
+  }
+  editMap.on('click', (e) => {
+    const name = editDestQuery.value.trim() || `地图选点${editDestinations.value.length + 1}`;
+    addEditDest({ name, lat: e.lnglat.getLat(), lng: e.lnglat.getLng(), country: '未知' });
+    editDestQuery.value = '';
+    editDestShowResults.value = false;
+  });
+  syncEditMarkers();
+  requestAnimationFrame(() => { if (editMap) editMap.resize(); });
+  setTimeout(() => { if (editMap) editMap.resize(); }, 200);
+  recalcEditDistance();
+}
+
+function segmentEditDistance(from, to, transport) {
+  return new Promise((resolve) => {
+    const pluginMap = { '驾车': 'Driving', '骑行': 'Riding', '步行': 'Walking' };
+    const plugin = pluginMap[transport];
+    if (plugin && amapReady && window.AMap && AMap[plugin]) {
+      new AMap[plugin]().search([from.lng, from.lat], [to.lng, to.lat], (status, result) => {
+        if (status === 'complete' && result.routes && result.routes.length) {
+          resolve(result.routes[0].distance / 1000);
+        } else {
+          resolve(haversineKm(from, to));
+        }
+      });
+    } else {
+      resolve(haversineKm(from, to));
+    }
+  });
+}
+
+async function recalcEditDistance() {
+  const token = ++editDistanceToken;
+  editComputedDistance = null;
+  editDistanceHint.value = '';
+  if (!editDestinations.value.length) return;
+  const origin = editProfile && editProfile.home_lat != null
+    ? { lat: editProfile.home_lat, lng: editProfile.home_lng }
+    : (trip.value?.origin_lat != null
+      ? { lat: trip.value.origin_lat, lng: trip.value.origin_lng }
+      : null);
+  if (!origin) {
+    editDistanceHint.value = '未设置出发城市，无法自动计算距离';
+    return;
+  }
+  editDistanceHint.value = '正在计算路线…';
+  const points = [origin, ...editDestinations.value];
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    total += await segmentEditDistance(points[i], points[i + 1], editForm.transport);
+    if (token !== editDistanceToken) return;
+  }
+  editComputedDistance = Number(total.toFixed(1));
+  const via = editDestinations.value.length > 1 ? `（经 ${editDestinations.value.length} 站）` : '';
+  editDistanceHint.value = `单程距离${via}：约 ${total.toFixed(1)} 公里`;
+}
+
+async function openEdit() {
   editForm.title = trip.value.title;
   editForm.date = trip.value.depart_date;
   editForm.days = trip.value.days;
   editForm.transport = trip.value.transport;
-  editForm.budget = trip.value.budget != null ? trip.value.budget : undefined;
-  editForm.distance = trip.value.distance_km != null ? trip.value.distance_km : undefined;
-  editForm.destName = trip.value.dest_name;
+  editMembers.value = (trip.value.members || [])
+    .filter((m) => m.name !== '我')
+    .map((m) => m.name);
+  editMemberInput.value = '';
+  const list = trip.value.destinations && trip.value.destinations.length
+    ? trip.value.destinations
+    : [{ name: trip.value.dest_name, lat: trip.value.dest_lat, lng: trip.value.dest_lng, country: '未知' }];
+  editDestinations.value = list.map((d) => ({
+    name: d.name, lat: d.lat, lng: d.lng, country: d.country || '未知',
+  }));
+  editDestQuery.value = '';
+  editActiveDestIndex.value = editDestinations.value.length ? 0 : -1;
+  updateEditDestText();
+  editBudgetTier.value = matchTierKey(
+    trip.value.budget,
+    trip.value.members?.length || 1,
+    trip.value.days,
+  );
+  editComputedDistance = trip.value.distance_km != null ? trip.value.distance_km : null;
+  try {
+    editProfile = await get('/api/profile');
+    editHomeQuery.value = editProfile.home_name
+      || trip.value.origin_name
+      || '';
+  } catch (_) {
+    editHomeQuery.value = trip.value.origin_name || '';
+  }
   editVisible.value = true;
 }
 
-function onEditDialogOpened() {
-  ensureEditMap();
+async function onEditOpened() {
+  destroyEditMap();
+  await nextTick();
+  setTimeout(() => { ensureEditMap(); }, 80);
 }
 
-function ensureEditMap() {
-  if (editMap || !amapReady || !editMapEl.value) return;
-  editMap = new AMap.Map(editMapEl.value, { zoom: 5, center: [trip.value.dest_lng, trip.value.dest_lat] });
-  if (trip.value.origin_lat != null) {
-    new AMap.Marker({
-      position: [trip.value.origin_lng, trip.value.origin_lat],
-      label: { content: '出发地', direction: 'top' },
-    }).setMap(editMap);
+async function syncEditMembers() {
+  const current = (trip.value.members || []).filter((m) => m.name !== '我');
+  const desired = editMembers.value;
+  for (const m of current) {
+    if (!desired.includes(m.name)) {
+      await del(`/api/trips/${tripId}/members/${m.id}`);
+    }
   }
-  editMap.on('click', (e) => {
-    setEditPoint({ lat: e.lnglat.getLat(), lng: e.lnglat.getLng() });
-  });
-  setEditPoint({ lat: trip.value.dest_lat, lng: trip.value.dest_lng });
-}
-
-function setEditPoint(p) {
-  editPoint = p;
-  editCoordText.value = `已选：${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`;
-  if (editMap) {
-    if (editMarker) editMarker.setMap(null);
-    editMarker = new AMap.Marker({
-      position: [p.lng, p.lat], draggable: true,
-      label: { content: '目的地', direction: 'top' },
-    });
-    editMarker.on('dragend', (e) => setEditPoint({ lat: e.lnglat.getLat(), lng: e.lnglat.getLng() }));
-    editMarker.setMap(editMap);
-    editMap.setCenter([p.lng, p.lat]);
-  }
-  recalcEditDistance();
-}
-
-function recalcEditDistance() {
-  if (!editPoint || !trip.value) return;
-  const t = trip.value;
-  const origin = t.origin_lat != null ? { lat: t.origin_lat, lng: t.origin_lng } : null;
-  if (!origin) { editDistanceHint.value = '该项目无出发地信息，请手填距离'; return; }
-  const transport = editForm.transport;
-  const pluginMap = { '驾车': 'Driving', '骑行': 'Riding', '步行': 'Walking' };
-  const plugin = pluginMap[transport];
-  if (plugin && amapReady && window.AMap && AMap[plugin]) {
-    editDistanceHint.value = '正在计算路线…';
-    new AMap[plugin]().search([origin.lng, origin.lat], [editPoint.lng, editPoint.lat], (status, result) => {
-      if (status === 'complete' && result.routes && result.routes.length) {
-        const km = result.routes[0].distance / 1000;
-        editForm.distance = Number(km.toFixed(1));
-        editDistanceHint.value = `${transport}路线约 ${km.toFixed(1)} 公里`;
-      } else {
-        const km = haversineKm(origin, editPoint);
-        editForm.distance = Number(km.toFixed(1));
-        editDistanceHint.value = `路线规划失败，直线距离约 ${km.toFixed(1)} 公里`;
-      }
-    });
-  } else {
-    const km = haversineKm(origin, editPoint);
-    editForm.distance = Number(km.toFixed(1));
-    editDistanceHint.value = `${transport}无路线规划，直线距离约 ${km.toFixed(1)} 公里`;
+  const kept = new Set(current.filter((m) => desired.includes(m.name)).map((m) => m.name));
+  for (const name of desired) {
+    if (!kept.has(name)) {
+      await post(`/api/trips/${tripId}/members`, { name });
+    }
   }
 }
 
@@ -397,24 +746,26 @@ async function saveEdit() {
   if (!editForm.title.trim()) return ElMessage.error('请填写项目名');
   if (!editForm.date) return ElMessage.error('请选择出发时间');
   if (!days || days < 1) return ElMessage.error('天数无效');
-  if (!editPoint) return ElMessage.error('请在地图上选择目的地');
-  if (!editForm.destName.trim()) return ElMessage.error('请填写目的地名称');
+  if (!editDestinations.value.length) return ElMessage.error('请至少添加一个目的地');
   editSaving.value = true;
   try {
     await put(`/api/trips/${tripId}`, {
       title: editForm.title.trim(),
-      dest_name: editForm.destName.trim(),
-      dest_lat: editPoint.lat,
-      dest_lng: editPoint.lng,
+      destinations: editDestinations.value.map((d) => ({
+        name: d.name, lat: d.lat, lng: d.lng, country: d.country,
+      })),
       depart_date: editForm.date,
       days,
       transport: editForm.transport,
-      distance_km: editForm.distance != null && editForm.distance !== '' ? Number(editForm.distance) : null,
-      budget: editForm.budget != null && editForm.budget !== '' ? Number(editForm.budget) : null,
+      distance_km: editComputedDistance,
+      budget: editEstimatedBudget.value,
     });
+    await syncEditMembers();
     ElMessage.success('已保存');
     await reload();
+    await loadCompanions();
     editVisible.value = false;
+    destroyEditMap();
   } catch (_) { /* api.js 已提示 */ } finally {
     editSaving.value = false;
   }
@@ -434,24 +785,67 @@ async function removeTrip() {
   } catch (_) { /* 已提示 */ }
 }
 
-// ---------- 同行人 ----------
+// ---------- 同行人（与发起项目一致：我默认 + 常客快选 + 回车添加） ----------
 const memberInput = ref('');
 
-async function addMember() {
-  const name = memberInput.value.trim();
-  if (!name) return;
+const otherMembers = computed(() =>
+  (trip.value?.members || []).filter((m) => m.name !== '我'));
+
+const quickPicks = computed(() => {
+  const taken = new Set((trip.value?.members || []).map((m) => m.name));
+  return companions.value.filter((c) => c.name !== '我' && !taken.has(c.name));
+});
+
+async function loadCompanions() {
   try {
-    await post(`/api/trips/${tripId}/members`, { name });
-    memberInput.value = '';
+    companions.value = await get('/api/companions');
+  } catch (_) { /* 已提示 */ }
+}
+
+async function ensureSelfMember() {
+  if (!trip.value) return;
+  if (trip.value.members.some((m) => m.name === '我')) return;
+  try {
+    await post(`/api/trips/${tripId}/members`, { name: '我' });
     await reload();
   } catch (_) { /* 已提示 */ }
 }
 
+async function addMember() {
+  const name = memberInput.value.trim();
+  memberInput.value = '';
+  if (!name) return;
+  if (name === '我') { ElMessage.warning('我默认同行，无需添加'); return; }
+  if ((trip.value?.members || []).some((m) => m.name === name)) {
+    ElMessage.error('该成员已添加');
+    return;
+  }
+  try {
+    await post(`/api/trips/${tripId}/members`, { name });
+    await reload();
+    await loadCompanions();
+  } catch (_) { /* 已提示 */ }
+}
+
+async function addQuick(name) {
+  if ((trip.value?.members || []).some((m) => m.name === name)) return;
+  try {
+    await post(`/api/trips/${tripId}/members`, { name });
+    await reload();
+    await loadCompanions();
+  } catch (_) { /* 已提示 */ }
+}
+
 async function removeMember(m) {
+  if (m.name === '我') {
+    ElMessage.warning('我默认同行，不能移除');
+    return;
+  }
   try {
     await del(`/api/trips/${tripId}/members/${m.id}`);
     ElMessage.success('已移除');
     await reload();
+    await loadCompanions();
   } catch (_) { /* 已提示（如该成员有花费，后端会返回 error） */ }
 }
 
@@ -647,10 +1041,16 @@ async function reload() {
 
 // ---------- 启动 ----------
 onMounted(async () => {
+  mq = window.matchMedia('(max-width: 768px)');
+  mq.addEventListener('change', onMqChange);
   if (!Number.isInteger(tripId)) { router.replace('/trips'); return; }
   try { await fetchMe(); } catch (_) { return; } // 401 由 api.js 自动跳 /login
   try {
     await reload();
+    if (!authState.isGuest) {
+      await ensureSelfMember();
+      await loadCompanions();
+    }
   } catch (_) {
     loadError.value = true;
     return;
@@ -659,17 +1059,19 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  if (editMap) { editMap.destroy(); editMap = null; editMarker = null; }
+  if (mq) mq.removeEventListener('change', onMqChange);
+  destroyEditMap();
 });
 </script>
 
 <style scoped>
-.trip-detail { min-height: 100%; }
+.trip-detail { min-height: 100%; min-height: 100dvh; }
 
 /* 顶部导航 */
 .top-nav {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 12px 20px;
+  padding-top: calc(12px + var(--safe-top));
   background: var(--brand-cream);
   border-bottom: 1px solid var(--brand-line);
   position: sticky; top: 0; z-index: 10;
@@ -681,13 +1083,14 @@ onBeforeUnmount(() => {
   font-size: 16px; font-weight: 700; color: var(--brand-ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.user-info { display: flex; align-items: center; gap: 10px; }
+.user-info { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .user-capsule {
   padding: 4px 14px; border-radius: 999px;
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary-dark-2);
   font-size: 13px; font-weight: 600;
   border: 1px solid var(--el-color-primary-light-7);
+  max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .user-link { cursor: pointer; }
 .user-link:hover { box-shadow: 0 0 0 2px var(--el-color-primary-light-7); }
@@ -707,7 +1110,8 @@ onBeforeUnmount(() => {
   background: var(--brand-cream);
 }
 .block-card :deep(.el-card__header) { padding: 14px 18px; border-bottom: 1px solid var(--brand-line); }
-.card-title-row { display: flex; align-items: center; justify-content: space-between; }
+.block-card :deep(.el-card__body) { padding: 14px 18px; }
+.card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .card-title { font-size: 15px; font-weight: 700; color: var(--brand-ink); }
 .sub-label { font-size: 13px; color: var(--brand-sub); margin-bottom: 6px; }
 
@@ -720,31 +1124,163 @@ onBeforeUnmount(() => {
   padding: 10px 14px; display: flex; flex-direction: column; gap: 4px;
 }
 .info-item span { font-size: 12px; color: var(--brand-sub); }
-.info-item strong { font-size: 14px; color: var(--brand-ink); }
+.info-item strong { font-size: 14px; color: var(--brand-ink); word-break: break-word; }
 
-/* 同行人 */
+/* 同行人（与发起项目同款） */
+.form-label { color: var(--brand-sub); font-weight: 600; font-size: 13px; margin-bottom: 8px; }
 .member-list { display: flex; flex-wrap: wrap; gap: 8px; }
-.inline-add { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+.member-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.quick-label { font-size: 13px; color: var(--brand-sub); }
+.quick-chip {
+  border: 1px solid #F5D9A8; background: #FDEFD9; color: #A5700B;
+  border-radius: 999px; padding: 3px 12px; font-size: 13px; cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.quick-chip:hover { transform: scale(1.06); }
+.quick-chip em { font-style: normal; font-size: 11px; opacity: 0.75; }
+.tag-input {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  border: 2px solid var(--brand-line); border-radius: 12px;
+  padding: 8px 10px; background: #ffffff;
+}
+.tag-input:focus-within { border-color: #F4A261; box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.2); }
+.tag-input input { border: none; outline: none; flex: 1; min-width: 120px; font-size: 14px; padding: 4px; background: transparent; }
+.member-tag { font-weight: 600; }
+.me-tag { background: var(--el-color-primary-light-9); color: var(--el-color-primary-dark-2); border-color: var(--el-color-primary-light-7); }
+.inline-add { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+.inline-add :deep(.el-input) { flex: 1; min-width: 140px; max-width: 100% !important; }
 
 /* 分摊统计 */
 .settle-summary { display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .stat-card {
-  flex: 1; min-width: 120px;
+  flex: 1; min-width: 100px;
   background: #fff; border: 1px solid var(--brand-line); border-radius: 10px;
   padding: 12px; text-align: center;
 }
 .stat-num { font-size: 18px; font-weight: 700; color: var(--el-color-primary); }
 .stat-label { font-size: 12px; color: var(--brand-sub); margin-top: 4px; }
-.settle-table { margin-bottom: 14px; }
+.settle-table, .expense-table { margin-bottom: 14px; width: 100%; overflow-x: auto; }
 .pos { color: #3d9a50; font-weight: 600; }
 .neg { color: #d45b4a; font-weight: 600; }
-.settle-transfers { margin-bottom: 16px; }
-.settle-transfers ul { margin: 0; padding-left: 18px; }
-.settle-transfers li { font-size: 13px; color: var(--brand-ink); padding: 2px 0; }
 
-.expense-table { margin-bottom: 14px; }
+/* 转账建议 · 插画风 */
+.settle-transfers {
+  margin: 4px 0 18px;
+  padding: 16px 16px 14px;
+  border-radius: 20px;
+  border: 2.5px dashed #E8D4B0;
+  background:
+    radial-gradient(ellipse 70% 60% at 8% 0%, rgba(255, 214, 170, 0.4), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 96% 12%, rgba(186, 220, 240, 0.35), transparent 50%),
+    linear-gradient(165deg, #FFF9EE 0%, #FDF3E0 55%, #F7EBD2 100%);
+}
+.transfer-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; margin-bottom: 14px;
+}
+.transfer-title {
+  font-family: 'KaiTi', 'STKaiti', 'Songti SC', 'PingFang SC', serif;
+  font-size: 22px; font-weight: 700; color: #5C4A3A; letter-spacing: 0.04em;
+}
+.transfer-sub { margin: 4px 0 0; font-size: 12px; color: #9A8468; }
+.transfer-count {
+  flex-shrink: 0; padding: 5px 11px; border-radius: 999px;
+  background: #FFFDF8; border: 1.5px solid #EFD9B0;
+  color: #A5700B; font-size: 12px; font-weight: 700;
+  box-shadow: 0 2px 0 #F5E6C8;
+}
+.transfer-list { display: flex; flex-direction: column; gap: 10px; }
+.transfer-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 253, 247, 0.94);
+  border: 1.5px solid #F0E2C8;
+  box-shadow: 0 3px 0 #F5EBDA;
+  animation: transfer-rise 0.45s ease both;
+  animation-delay: var(--delay, 0s);
+}
+.transfer-who {
+  display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;
+}
+.transfer-person {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 52px; max-width: 72px;
+}
+.transfer-person em {
+  font-style: normal; font-size: 10px; color: #B9AE9F; line-height: 1;
+}
+.transfer-person.from em { color: #D45B4A; }
+.transfer-person.to em { color: #3d9a50; }
+.transfer-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  object-fit: cover; object-position: center center;
+  background: #FFFDF8;
+  box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(74, 64, 57, 0.14);
+}
+.transfer-name {
+  font-size: 13px; font-weight: 700; color: var(--brand-ink);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.transfer-flow {
+  position: relative;
+  flex: 1; min-width: 36px; max-width: 80px;
+  height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.transfer-arrow-line {
+  position: absolute; left: 4px; right: 14px; top: 50%;
+  height: 2px; margin-top: -1px;
+  background: linear-gradient(90deg, #F4A261, #E76F51);
+  border-radius: 2px;
+}
+.transfer-arrow-tip {
+  position: relative; z-index: 1;
+  margin-left: auto; margin-right: 0;
+  color: #E76F51; font-size: 18px; font-weight: 700; line-height: 1;
+  text-shadow: 0 1px 0 #fff;
+}
+.transfer-amount {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #FFF8EC, #FFE8C4);
+  border: 1.5px solid #F4C97A;
+}
+.transfer-amount-label { font-size: 11px; color: #C48C28; font-weight: 600; }
+.transfer-amount strong {
+  font-size: 17px; font-weight: 800; color: #D95F41;
+  font-variant-numeric: tabular-nums;
+}
+.transfer-empty {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: rgba(255, 253, 247, 0.9);
+  border: 1.5px solid #D8E8C8;
+}
+.transfer-empty-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: #E9F6E3; color: #4E7A36; font-size: 18px; font-weight: 700;
+}
+.transfer-empty strong { display: block; font-size: 14px; color: #4E7A36; }
+.transfer-empty p { margin: 2px 0 0; font-size: 12px; color: #9A8468; }
+
+@keyframes transfer-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .transfer-card { animation: none; }
+}
 
 .inline-add-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+.inline-add-form :deep(.el-input),
+.inline-add-form :deep(.el-select),
+.inline-add-form :deep(.el-date-editor) { flex: 1 1 140px; }
 
 /* 行程 */
 .visit-none { color: var(--brand-sub); font-size: 13px; padding: 8px 0; }
@@ -754,11 +1290,11 @@ onBeforeUnmount(() => {
   border-left: 3px solid var(--el-color-primary); padding-left: 8px; margin-bottom: 6px;
 }
 .it-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 10px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
 }
 .it-row:hover { background: #fff; }
-.it-content { font-size: 14px; color: var(--brand-ink); }
+.it-content { font-size: 14px; color: var(--brand-ink); min-width: 0; word-break: break-word; }
 
 /* AI 预览 */
 .ai-preview {
@@ -768,7 +1304,7 @@ onBeforeUnmount(() => {
 }
 .ai-preview-title { font-size: 13px; font-weight: 700; color: var(--el-color-primary-dark-2); margin-bottom: 8px; }
 .ai-row { font-size: 14px; color: var(--brand-ink); padding: 3px 0; }
-.ai-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.ai-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
 /* 照片墙 */
 .empty-state { text-align: center; color: var(--brand-sub); font-size: 14px; padding: 40px 0; }
@@ -782,27 +1318,94 @@ onBeforeUnmount(() => {
 .photo-cell img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; display: block; }
 .photo-del {
   position: absolute; top: 6px; right: 6px;
-  width: 24px; height: 24px; border-radius: 50%;
+  width: 28px; height: 28px; border-radius: 50%;
   border: none; background: rgba(0, 0, 0, 0.55); color: #fff;
   font-size: 14px; line-height: 1; cursor: pointer;
   opacity: 0; transition: opacity 0.15s ease;
 }
 .photo-cell:hover .photo-del { opacity: 1; }
 
-/* 编辑弹窗 */
-.edit-form-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 14px;
+/* 编辑弹窗（内容复用 CreateTripForm） */
+.edit-dialog :deep(.el-dialog__body) { padding-top: 8px; }
+.edit-dialog :deep(.el-dialog__footer) {
+  display: flex; gap: 10px; justify-content: flex-end;
 }
-.form-block { margin-top: 16px; }
-.dest-picker { display: flex; gap: 14px; }
-.dest-side { width: 220px; flex-shrink: 0; }
-.dest-coord { font-size: 12px; color: var(--brand-sub); margin-top: 8px; }
-.distance-hint { font-size: 12px; color: var(--el-color-primary-dark-2); margin-top: 6px; min-height: 16px; }
-.picker-map { flex: 1; height: 260px; border-radius: 10px; border: 1px solid var(--brand-line); overflow: hidden; }
+.edit-dialog :deep(.el-dialog__footer .el-button) { min-width: 96px; }
 
-@media (max-width: 640px) {
-  .edit-form-grid { grid-template-columns: 1fr; }
-  .dest-picker { flex-direction: column; }
-  .dest-side { width: 100%; }
+@media (max-width: 768px) {
+  .top-nav { padding: 10px 12px; padding-top: calc(10px + var(--safe-top)); }
+  .nav-title { font-size: 15px; }
+  .block-card :deep(.el-card__header),
+  .block-card :deep(.el-card__body) { padding: 12px 14px; }
+  .info-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { min-width: calc(33% - 8px); }
+  .photo-wall { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .photo-del { opacity: 1; }
+  .ai-actions :deep(.el-button),
+  .card-title-row :deep(.el-button) { margin-left: 0; }
+  .edit-dialog :deep(.el-dialog__footer) {
+    position: sticky; bottom: 0;
+    padding-bottom: calc(12px + var(--safe-bottom));
+    background: var(--brand-cream);
+  }
+  .edit-dialog :deep(.el-dialog__footer .el-button) { flex: 1; min-height: 48px; }
+
+  .settle-transfers { padding: 14px 12px 12px; border-radius: 16px; }
+  .transfer-title { font-size: 18px; }
+  .transfer-card {
+    flex-direction: column; align-items: stretch; gap: 10px;
+    padding: 12px;
+  }
+  .transfer-who { justify-content: space-between; }
+  .transfer-person { min-width: 64px; max-width: 88px; }
+  .transfer-flow { max-width: none; flex: 1; }
+  .transfer-amount {
+    flex-direction: row; align-items: baseline; justify-content: space-between;
+    width: 100%;
+  }
+  .transfer-amount strong { font-size: 18px; }
+
+  /* 具体行程：天数缩小，内容独占一行 */
+  .day-title {
+    font-size: 11px;
+    font-weight: 600;
+    padding-left: 6px;
+    margin-bottom: 4px;
+    border-left-width: 2px;
+    letter-spacing: 0.02em;
+  }
+  .it-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid var(--brand-line);
+    margin-bottom: 6px;
+  }
+  .it-row:hover { background: #fff; }
+  .it-content {
+    display: block;
+    width: 100%;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .it-row :deep(.el-button) {
+    align-self: flex-end;
+    margin: 0;
+    padding: 0 4px;
+  }
+  .ai-row {
+    display: block;
+    width: 100%;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    background: #fff;
+    border-radius: 8px;
+    line-height: 1.55;
+  }
+}
+@media (max-width: 400px) {
+  .info-grid { grid-template-columns: 1fr; }
 }
 </style>
