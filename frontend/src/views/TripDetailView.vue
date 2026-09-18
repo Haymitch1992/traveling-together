@@ -28,8 +28,8 @@
           </div>
         </template>
         <div class="info-grid">
-          <div class="info-item"><span>目的地</span><strong>{{ trip.dest_name }}</strong></div>
           <div class="info-item"><span>出发地</span><strong>{{ trip.origin_name || '未设置' }}</strong></div>
+          <div class="info-item"><span>目的地</span><strong>{{ trip.dest_name }}</strong></div>
           <div class="info-item"><span>出发时间</span><strong>{{ trip.depart_date }}</strong></div>
           <div class="info-item"><span>旅行天数</span><strong>{{ trip.days }} 天</strong></div>
           <div class="info-item"><span>出行方式</span><strong>{{ trip.transport }}</strong></div>
