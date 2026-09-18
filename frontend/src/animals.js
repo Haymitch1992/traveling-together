@@ -1,38 +1,35 @@
-/* 卡通动物 SVG 标记（小熊/兔子/猫咪/企鹅），与登录页同一套形象 */
-export const ANIMAL_SVGS = [
-  // 小熊
-  `<circle cx="14" cy="10" r="4" fill="#B08968"/><circle cx="26" cy="10" r="4" fill="#B08968"/>
-   <circle cx="14" cy="10" r="1.8" fill="#E8C9A8"/><circle cx="26" cy="10" r="1.8" fill="#E8C9A8"/>
-   <ellipse cx="20" cy="32" rx="13" ry="11" fill="#B08968"/>
-   <circle cx="20" cy="18" r="10" fill="#B08968"/>
-   <ellipse cx="20" cy="21" rx="5" ry="3.6" fill="#E8C9A8"/>
-   <circle cx="20" cy="19.4" r="1.5" fill="#4A4039"/>
-   <circle cx="16.5" cy="15.5" r="1.4" fill="#4A4039"/><circle cx="23.5" cy="15.5" r="1.4" fill="#4A4039"/>`,
-  // 兔子
-  `<ellipse cx="15" cy="8" rx="3" ry="8" fill="#FFFDF7" stroke="#EAD9C2" stroke-width="1"/>
-   <ellipse cx="25" cy="8" rx="3" ry="8" fill="#FFFDF7" stroke="#EAD9C2" stroke-width="1"/>
-   <ellipse cx="15" cy="8" rx="1.3" ry="5" fill="#F8C8D0"/><ellipse cx="25" cy="8" rx="1.3" ry="5" fill="#F8C8D0"/>
-   <ellipse cx="20" cy="33" rx="11" ry="10" fill="#FFFDF7" stroke="#EAD9C2" stroke-width="1"/>
-   <circle cx="20" cy="20" r="9" fill="#FFFDF7" stroke="#EAD9C2" stroke-width="1"/>
-   <circle cx="16.5" cy="18" r="1.4" fill="#4A4039"/><circle cx="23.5" cy="18" r="1.4" fill="#4A4039"/>
-   <path d="M20,21 L21.5,22.5 L20,23.5 Z" fill="#F8A5B8"/>`,
-  // 猫咪
-  `<path d="M12,14 L14,5 L18,12 Z" fill="#F4A261"/><path d="M22,12 L26,5 L28,14 Z" fill="#F4A261"/>
-   <path d="M9,32 Q4,30 5,24" stroke="#F4A261" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-   <ellipse cx="20" cy="33" rx="11" ry="10" fill="#F4A261"/>
-   <circle cx="20" cy="19" r="9.5" fill="#F4A261"/>
-   <circle cx="16.5" cy="17.5" r="1.4" fill="#4A4039"/><circle cx="23.5" cy="17.5" r="1.4" fill="#4A4039"/>
-   <path d="M20,20 L21.5,21.5 L20,22.5 Z" fill="#E76F51"/>`,
-  // 企鹅
-  `<ellipse cx="20" cy="24" rx="10" ry="14" fill="#3A4454"/>
-   <ellipse cx="20" cy="28" rx="6" ry="9" fill="#FFFDF7"/>
-   <circle cx="16.5" cy="16" r="1.3" fill="#FFFDF7"/><circle cx="23.5" cy="16" r="1.3" fill="#FFFDF7"/>
-   <circle cx="16.5" cy="16" r="0.65" fill="#4A4039"/><circle cx="23.5" cy="16" r="0.65" fill="#4A4039"/>
-   <path d="M18,19 L22,19 L20,21.5 Z" fill="#F4A261"/>
-   <ellipse cx="15" cy="38" rx="3.5" ry="2" fill="#F4A261"/><ellipse cx="25" cy="38" rx="3.5" ry="2" fill="#F4A261"/>`,
-];
+/* 地图标记：立体卡通旅行者（挥手小人 + 背包），SVG 伪立体（高光+阴影） */
+const TRAVELER_SVG = `
+  <!-- 地面阴影 -->
+  <ellipse cx="20" cy="45" rx="10" ry="2.5" fill="rgba(74,64,57,0.2)"/>
+  <!-- 背包（身体右后侧） -->
+  <rect x="25" y="18" width="11" height="14" rx="4" fill="#F5B84C" stroke="#E8A93E" stroke-width="1"/>
+  <rect x="27" y="21" width="7" height="4" rx="2" fill="#E8A93E"/>
+  <!-- 腿 + 鞋 -->
+  <rect x="14" y="34" width="5" height="9" rx="2.5" fill="#5B7A9D"/>
+  <rect x="21" y="34" width="5" height="9" rx="2.5" fill="#4E6B8C"/>
+  <ellipse cx="16.5" cy="43.5" rx="3.5" ry="1.8" fill="#4A4039"/>
+  <ellipse cx="23.5" cy="43.5" rx="3.5" ry="1.8" fill="#4A4039"/>
+  <!-- 身体（橘色上衣 + 高光） -->
+  <rect x="12" y="20" width="16" height="16" rx="6" fill="#E76F51"/>
+  <ellipse cx="16" cy="24" rx="4" ry="3" fill="#F48B6B"/>
+  <!-- 挥手的手臂 -->
+  <path d="M13,24 Q6,20 5,12" stroke="#F7C491" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <circle cx="5" cy="11" r="2.5" fill="#F7C491"/>
+  <!-- 头（皮肤渐变感：底色 + 高光） -->
+  <circle cx="19" cy="11" r="8" fill="#F7C491"/>
+  <ellipse cx="16" cy="8" rx="4" ry="2.5" fill="#FFDFC2" opacity="0.75"/>
+  <!-- 头发 -->
+  <path d="M11,10 Q11,3 19,3 Q27,3 27,10 Q23,6 19,6 Q15,6 11,10 Z" fill="#6B4A2F"/>
+  <!-- 表情 -->
+  <circle cx="16" cy="11" r="1.2" fill="#4A4039"/>
+  <circle cx="22" cy="11" r="1.2" fill="#4A4039"/>
+  <path d="M16.5,14.5 Q19,17 21.5,14.5" stroke="#4A4039" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <circle cx="13.8" cy="13.5" r="1.3" fill="#F8A5A0" opacity="0.6"/>
+  <circle cx="24.2" cy="13.5" r="1.3" fill="#F8A5A0" opacity="0.6"/>
+`;
 
-// 次数 → 大小/颜色（沿用旧版规则：浅橙→深红，0.9→1.5）
+// 次数 → 大小/角标颜色（沿用旧规则：浅橙→深红，0.9→1.5）
 export function markerStyle(count) {
   const t = Math.min((count - 1) / 9, 1);
   const lerp = (a, b) => Math.round(a + (b - a) * t);
@@ -41,9 +38,9 @@ export function markerStyle(count) {
   return { color, scale };
 }
 
-export function animalContent(kind, scale, color, count) {
+export function travelerContent(scale, color, count) {
   return `<div class="map-animal" style="transform:scale(${scale})">
-    <svg width="40" height="44" viewBox="0 0 40 44">${ANIMAL_SVGS[kind % 4]}</svg>
+    <svg width="40" height="48" viewBox="0 0 40 48">${TRAVELER_SVG}</svg>
     <span class="map-animal-badge" style="background:${color}">${count}</span>
   </div>`;
 }

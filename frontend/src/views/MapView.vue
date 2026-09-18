@@ -155,7 +155,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { get, post, put, del } from '../api';
 import { loadAmap } from '../amap';
 import { authState, fetchMe, logout } from '../auth';
-import { markerStyle, animalContent } from '../animals';
+import { markerStyle, travelerContent } from '../animals';
 
 const router = useRouter();
 
@@ -214,7 +214,7 @@ function renderMarkers() {
     const { color, scale } = markerStyle(city.visitCount);
     const marker = new AMap.Marker({
       position: [city.lng, city.lat],
-      content: animalContent(city.id % 4, scale, color, city.visitCount),
+      content: travelerContent(scale, color, city.visitCount),
       anchor: 'bottom-center',
       zIndex: 100 + city.visitCount,
     });
