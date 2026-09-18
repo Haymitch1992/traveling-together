@@ -32,7 +32,7 @@
       </header>
 
       <div class="stats">
-        <div class="stat-card"><div class="stat-num">{{ stats.cityCount }}</div><div class="stat-label">城市</div></div>
+        <div class="stat-card"><div class="stat-num">{{ stats.cityCount }}</div><div class="stat-label">省市</div></div>
         <div class="stat-card"><div class="stat-num">{{ stats.visitCount }}</div><div class="stat-label">总次数</div></div>
         <div class="stat-card"><div class="stat-num">{{ stats.countryCount }}</div><div class="stat-label">国家/地区</div></div>
       </div>
@@ -46,7 +46,7 @@
           </el-select>
         </div>
         <div class="year-nums">
-          <div class="year-num"><strong>{{ summary ? summary.cityCount : 0 }}</strong><span>个地方</span></div>
+          <div class="year-num"><strong>{{ summary ? summary.cityCount : 0 }}</strong><span>个省市</span></div>
           <div class="year-num"><strong>{{ summary ? summary.totalKm : 0 }}</strong><span>公里(往返)</span></div>
         </div>
         <el-button size="small" text class="ys-toggle" @click="detailVisible = true">查看明细 ▾</el-button>
@@ -131,7 +131,7 @@
 
     <el-dialog v-model="detailVisible" :title="detailTitle" width="560px">
       <el-table :data="detailRows" size="small" max-height="420" empty-text="还没有记录">
-        <el-table-column label="地点" min-width="130">
+        <el-table-column label="省市" min-width="130">
           <template #default="{ row }">
             <a v-if="row.trip" class="ys-trip-link" href="#" @click.prevent="goTripFromDialog(row.trip.id)">{{ row.name }}</a>
             <span v-else>{{ row.name }}</span>
@@ -296,22 +296,27 @@ const detailTitle = computed(() => {
   return `${label} · 明细`;
 });
 
-// 次数与距离合并为一行：距离取该地点关联旅行项目的单程合计
+// 次数与距离合并为一行（按省市）；距离取该省市下关联旅行项目的单程合计
 const detailRows = computed(() => {
   const s = summary.value;
   if (!s) return [];
-  const kmByDest = {};
-  const tripByDest = {};
+  const regionOf = (destName) => {
+    const city = cities.value.find((c) => c.name === destName);
+    return city ? (city.region || city.name) : destName;
+  };
+  const kmByRegion = {};
+  const tripByRegion = {};
   s.trips.forEach((t) => {
-    if (t.distance_km != null) kmByDest[t.dest_name] = (kmByDest[t.dest_name] || 0) + t.distance_km;
-    if (!tripByDest[t.dest_name]) tripByDest[t.dest_name] = t;
+    const key = regionOf(t.dest_name);
+    if (t.distance_km != null) kmByRegion[key] = (kmByRegion[key] || 0) + t.distance_km;
+    if (!tripByRegion[key]) tripByRegion[key] = t;
   });
   return s.cities.map((c) => ({
     name: c.name,
     country: c.country,
     n: c.n,
-    km: kmByDest[c.name] ?? null,
-    trip: tripByDest[c.name] || null,
+    km: kmByRegion[c.name] ?? null,
+    trip: tripByRegion[c.name] || null,
   }));
 });
 

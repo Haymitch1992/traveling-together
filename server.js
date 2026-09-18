@@ -249,13 +249,15 @@ app.delete('/api/cities/:id', auth.requireAuth, auth.requireWrite, (req, res) =>
 app.get('/api/stats', auth.requireAuth, (req, res) => {
   const userId = req.auth.userId;
   const year = /^\d{4}$/.test(req.query.year || '') ? req.query.year : null;
+  // 城市数按省市归并：同一 region（如北京下多个打卡点）只计 1
+  const regionKey = "COALESCE(NULLIF(c.region, ''), c.name)";
   let cityCount, visitCount, countryCount;
   if (year) {
-    cityCount = db.prepare('SELECT COUNT(DISTINCT v.city_id) AS n FROM visits v JOIN cities c ON c.id = v.city_id WHERE c.user_id = ? AND substr(v.visited_at, 1, 4) = ?').get(userId, year).n;
+    cityCount = db.prepare(`SELECT COUNT(DISTINCT ${regionKey}) AS n FROM visits v JOIN cities c ON c.id = v.city_id WHERE c.user_id = ? AND substr(v.visited_at, 1, 4) = ?`).get(userId, year).n;
     visitCount = db.prepare('SELECT COUNT(*) AS n FROM visits v JOIN cities c ON c.id = v.city_id WHERE c.user_id = ? AND substr(v.visited_at, 1, 4) = ?').get(userId, year).n;
     countryCount = db.prepare('SELECT COUNT(DISTINCT c.country) AS n FROM visits v JOIN cities c ON c.id = v.city_id WHERE c.user_id = ? AND substr(v.visited_at, 1, 4) = ?').get(userId, year).n;
   } else {
-    cityCount = db.prepare('SELECT COUNT(*) AS n FROM cities WHERE user_id = ?').get(userId).n;
+    cityCount = db.prepare(`SELECT COUNT(DISTINCT ${regionKey}) AS n FROM cities c WHERE c.user_id = ?`).get(userId).n;
     visitCount = db.prepare('SELECT COUNT(*) AS n FROM visits v JOIN cities c ON c.id = v.city_id WHERE c.user_id = ?').get(userId).n;
     countryCount = db.prepare('SELECT COUNT(DISTINCT country) AS n FROM cities WHERE user_id = ?').get(userId).n;
   }
@@ -283,8 +285,9 @@ app.get('/api/summary/yearly', auth.requireAuth, (req, res) => {
   const tCond = year ? ' AND substr(depart_date, 1, 4) = ?' : '';
   const p = year ? [userId, year] : [userId];
 
+  const regionKey = "COALESCE(NULLIF(c.region, ''), c.name)";
   const cityStats = db.prepare(`
-    SELECT COUNT(DISTINCT c.id) AS cities, COUNT(v.id) AS visits
+    SELECT COUNT(DISTINCT ${regionKey}) AS cities, COUNT(v.id) AS visits
     FROM visits v JOIN cities c ON c.id = v.city_id
     WHERE c.user_id = ?${vCond}
   `).get(...p);
@@ -293,10 +296,10 @@ app.get('/api/summary/yearly', auth.requireAuth, (req, res) => {
     FROM trips WHERE user_id = ?${tCond}
   `).get(...p);
   const cityList = db.prepare(`
-    SELECT c.name, c.country, COUNT(v.id) AS n
+    SELECT ${regionKey} AS name, MIN(c.country) AS country, COUNT(v.id) AS n
     FROM visits v JOIN cities c ON c.id = v.city_id
     WHERE c.user_id = ?${vCond}
-    GROUP BY c.id ORDER BY n DESC, c.name
+    GROUP BY ${regionKey} ORDER BY n DESC, name
   `).all(...p);
   const tripList = db.prepare(`
     SELECT id, title, dest_name, depart_date, days, distance_km

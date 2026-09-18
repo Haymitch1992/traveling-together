@@ -117,7 +117,7 @@ npm run dev:web      # Vite 开发服务器 :5173（自动代理 /api 和 /uploa
 
 说明：
 
-- **端口**：默认对外 **8300**（容器内部固定 3000）；如与服务器上其他服务冲突，`APP_PORT=8080 docker compose up -d` 即可换端口；腾讯云安全组需放行对应端口
+- **端口**：默认对外 **8300**（容器内部仍为 3000）；可用 `APP_PORT=8080 docker compose up -d` 换端口；云厂商安全组 / 防火墙需放行对应端口
 - **数据持久化**：`./data` 目录挂载进容器，数据库和照片都在宿主机上，重建容器不丢数据；`data/cities.json` 不存在时容器启动会自动播种
 - **配置方式**：默认挂载 `config.json`（只读）；也可以改用环境变量（`AMAP_KEY`、`DEEPSEEK_KEY`、`SMTP_USER`、`SMTP_PASS` 等，见 docker-compose.yml 注释），环境变量优先级更高
 - 常用命令：`docker compose logs -f` 看日志、`docker compose restart` 重启、`docker compose down && docker compose up -d --build` 更新代码后重建
