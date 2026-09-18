@@ -136,7 +136,7 @@
         </div>
 
         <div class="form-block">
-          <div class="form-label">同行人（回车添加，第一个一般是自己）</div>
+          <div class="form-label">同行人（我默认同行，回车添加其他伙伴）</div>
           <div v-if="quickPicks.length" class="member-quick">
             <span class="quick-label">常客：</span>
             <button
@@ -330,6 +330,7 @@ function addMemberFromInput() {
   const name = memberInput.value.trim();
   memberInput.value = '';
   if (!name) return;
+  if (name === '我') { ElMessage.warning('我默认同行，无需添加'); return; }
   if (members.value.includes(name)) { ElMessage.error('该成员已添加'); return; }
   members.value.push(name);
 }
@@ -429,7 +430,6 @@ function pickDest(c) {
 function openCreate() {
   createVisible.value = true;
   if (!form.date) form.date = today();
-  if (!members.value.length) members.value = ['我'];
 }
 
 async function onDialogOpened() {
@@ -446,7 +446,6 @@ async function submit() {
   if (!days || days < 1) return ElMessage.error('请填写旅行天数');
   if (!destPoint.value) return ElMessage.error('请在地图上选择目的地');
   if (!dest) return ElMessage.error('请填写目的地名称');
-  if (!members.value.length) return ElMessage.error('请至少添加一名同行人');
   const body = {
     title,
     dest_name: dest,
@@ -458,7 +457,7 @@ async function submit() {
     transport: form.transport,
     distance_km: computedDistance,
     budget: form.budget ? Number(form.budget) : null,
-    members: members.value,
+    members: ['我', ...members.value], // 我默认每次同行
   };
   try {
     const trip = await post('/api/trips', body);
