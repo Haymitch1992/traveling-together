@@ -438,7 +438,12 @@ onMounted(async () => {
   }
   const ok = await loadAmap();
   if (ok) {
-    map = new AMap.Map(mapEl.value, { zoom: 3, center: [105, 35], viewMode: '2D' });
+    map = new AMap.Map(mapEl.value, {
+      zoom: 9,
+      center: [116.4074, 39.9042], // 默认聚焦北京
+      viewMode: '2D',
+      mapStyle: 'amap://styles/fresh', // 清新蓝风格
+    });
     renderMarkers();
   } else {
     mapFailed.value = true;
