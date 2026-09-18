@@ -62,7 +62,7 @@ function settle(members, expenses) {
 
 // ---------- 个人资料 ----------
 router.get('/profile', requireAuth, (req, res) => {
-  const u = db.prepare('SELECT username, home_name, home_lat, home_lng FROM users WHERE id = ?').get(req.auth.userId);
+  const u = db.prepare('SELECT username, email, home_name, home_lat, home_lng FROM users WHERE id = ?').get(req.auth.userId);
   res.json(u);
 });
 

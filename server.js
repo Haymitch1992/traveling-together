@@ -139,6 +139,19 @@ app.get('/api/auth/me', auth.requireAuth, (req, res) => {
   res.json({ username: req.auth.username, isGuest: req.auth.isGuest });
 });
 
+// 修改密码（游客禁止）
+app.put('/api/auth/password', auth.requireAuth, auth.requireWrite, (req, res) => {
+  const { oldPassword, newPassword } = req.body || {};
+  if (!oldPassword || !newPassword) return bad(res, '原密码和新密码必填');
+  if (newPassword.length < 6) return bad(res, '新密码至少 6 位');
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.auth.userId);
+  if (!user || !auth.verifyPassword(oldPassword, user.password_hash)) return bad(res, '原密码错误');
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword(newPassword), user.id);
+  // 其他会话全部失效，当前会话保留
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(user.id, req.auth.token);
+  res.json({ ok: true });
+});
+
 // ---------- 业务 API（均需登录，写操作游客禁止） ----------
 app.get('/api/config', (req, res) => {
   res.json({ amapKey: config.amapKey || '', amapSecurityCode: config.amapSecurityCode || '' });

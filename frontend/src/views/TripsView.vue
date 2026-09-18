@@ -6,7 +6,7 @@
         <span class="nav-title">旅行项目</span>
       </div>
       <div class="user-info">
-        <span class="current-user">{{ authState.isGuest ? '游客' : authState.username }}</span>
+        <span class="current-user user-link" title="编辑个人资料" @click="router.push('/profile')">{{ authState.isGuest ? '游客' : authState.username }}</span>
         <el-button size="small" text @click="logout">退出</el-button>
       </div>
     </nav>
@@ -521,6 +521,8 @@ onUnmounted(() => {
   background: #fff; border: 1px solid var(--brand-line); border-radius: 999px;
   padding: 4px 14px; font-size: 13px; font-weight: 600; color: var(--brand-sub);
 }
+.user-link { cursor: pointer; }
+.user-link:hover { color: #E76F51; border-color: var(--el-color-primary-light-7); }
 
 .guest-banner {
   margin: 12px 24px 0;

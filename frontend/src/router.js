@@ -8,6 +8,7 @@ const router = createRouter({
     { path: '/trips', component: () => import('./views/TripsView.vue') },
     { path: '/trips/new', component: () => import('./views/TripsView.vue') }, // 打开即弹发起窗口
     { path: '/trip/:id', component: () => import('./views/TripDetailView.vue') },
+    { path: '/profile', component: () => import('./views/ProfileView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 });

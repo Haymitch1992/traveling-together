@@ -20,7 +20,7 @@
         <div class="panel-header-row">
           <h1>结伴出行</h1>
           <div class="user-info">
-            <span class="user-chip">
+            <span class="user-chip user-chip-link" title="编辑个人资料" @click="router.push('/profile')">
               <span class="user-avatar">{{ avatarText }}</span>
               <span class="current-user">{{ authState.isGuest ? '游客' : authState.username }}</span>
             </span>
@@ -514,6 +514,8 @@ onBeforeUnmount(() => {
   display: inline-flex; align-items: center; justify-content: center;
 }
 .current-user { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-chip-link { cursor: pointer; transition: box-shadow 0.15s ease; }
+.user-chip-link:hover { box-shadow: 0 0 0 2px var(--el-color-primary-light-7); }
 .logout-btn { padding: 4px 6px; color: var(--brand-sub); }
 
 .guest-banner {
