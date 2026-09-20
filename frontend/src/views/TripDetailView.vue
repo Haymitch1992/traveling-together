@@ -57,6 +57,7 @@
           <div class="card-title-row">
             <span class="card-title">基本信息</span>
             <div v-if="!authState.isGuest" class="card-actions">
+              <el-button size="small" @click="openShare">分享</el-button>
               <el-button size="small" @click="openEdit">编辑</el-button>
               <el-button size="small" type="danger" plain @click="removeTrip">删除项目</el-button>
             </div>
@@ -344,6 +345,36 @@
       <template #footer>
         <el-button size="large" round @click="closeEdit">取消</el-button>
         <el-button type="primary" size="large" round :loading="editSaving" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 分享链接 -->
+    <el-dialog
+      v-model="shareVisible"
+      title="分享给微信好友"
+      :width="isMobile ? '92%' : '440px'"
+      destroy-on-close
+    >
+      <p class="share-hint">生成公开只读链接，好友无需登录即可查看行程、照片与花费分摊。</p>
+      <div v-if="shareLoading" class="share-loading">生成中…</div>
+      <template v-else-if="shareUrl">
+        <el-input :model-value="shareUrl" readonly class="share-url-input">
+          <template #append>
+            <el-button @click="copyShareUrl">复制</el-button>
+          </template>
+        </el-input>
+        <p class="share-tip">粘贴到微信发给好友即可</p>
+      </template>
+      <template #footer>
+        <el-button v-if="shareUrl" type="danger" plain round :loading="shareClosing" @click="closeShare">关闭分享</el-button>
+        <el-button
+          v-if="shareUrl && canNativeShare"
+          type="primary"
+          plain
+          round
+          @click="nativeShare"
+        >系统分享</el-button>
+        <el-button type="primary" round :disabled="!shareUrl" @click="copyShareUrl">复制链接</el-button>
       </template>
     </el-dialog>
 
@@ -1025,6 +1056,80 @@ let uploadFailCount = 0;
 const viewerVisible = ref(false);
 const viewerIndex = ref(0);
 
+// ---------- 分享 ----------
+const shareVisible = ref(false);
+const shareLoading = ref(false);
+const shareClosing = ref(false);
+const shareUrl = ref('');
+const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+async function openShare() {
+  shareVisible.value = true;
+  shareLoading.value = true;
+  shareUrl.value = '';
+  try {
+    const data = await post(`/api/trips/${tripId}/share`);
+    shareUrl.value = data.url || `${location.origin}/s/${data.token}`;
+  } catch (_) {
+    shareVisible.value = false;
+  } finally {
+    shareLoading.value = false;
+  }
+}
+
+async function copyShareUrl() {
+  if (!shareUrl.value) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareUrl.value);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = shareUrl.value;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    ElMessage.success('已复制，粘贴发给微信好友');
+  } catch (_) {
+    ElMessage.info(shareUrl.value);
+  }
+}
+
+async function nativeShare() {
+  if (!shareUrl.value || !canNativeShare) return;
+  try {
+    await navigator.share({
+      title: trip.value?.title || '旅行分享',
+      text: `看看我的旅行「${trip.value?.title || ''}」`,
+      url: shareUrl.value,
+    });
+  } catch (e) {
+    if (e && e.name !== 'AbortError') ElMessage.error('分享失败');
+  }
+}
+
+async function closeShare() {
+  try {
+    await ElMessageBox.confirm(
+      '关闭后旧链接将失效，好友无法再打开。确定关闭？',
+      '关闭分享',
+      { type: 'warning', confirmButtonText: '关闭分享', cancelButtonText: '取消' },
+    );
+  } catch (_) {
+    return;
+  }
+  shareClosing.value = true;
+  try {
+    await del(`/api/trips/${tripId}/share`);
+    shareUrl.value = '';
+    shareVisible.value = false;
+    ElMessage.success('已关闭分享');
+  } catch (_) { /* 已提示 */ } finally {
+    shareClosing.value = false;
+  }
+}
+
 function photoUrl(p) { return `/uploads/${tripId}/${p.filename}`; }
 
 const photoUrls = computed(() => (trip.value ? trip.value.photos.map(photoUrl) : []));
@@ -1383,6 +1488,10 @@ onBeforeUnmount(() => {
   display: flex; gap: 10px; justify-content: flex-end;
 }
 .edit-dialog :deep(.el-dialog__footer .el-button) { min-width: 96px; }
+.share-hint { margin: 0 0 12px; font-size: 13px; color: var(--brand-sub); line-height: 1.5; }
+.share-tip { margin: 10px 0 0; font-size: 12px; color: var(--brand-sub); }
+.share-loading { padding: 12px 0; color: var(--brand-sub); font-size: 14px; }
+.share-url-input { margin-top: 4px; }
 .edit-page-actions {
   display: flex; gap: 12px; margin-top: 16px;
   position: sticky; bottom: 0;

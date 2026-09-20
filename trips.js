@@ -577,4 +577,103 @@ router.delete('/trips/:id/photos/:pid', requireAuth, requireWrite, (req, res) =>
   res.json({ ok: true });
 });
 
+// ---------- 分享（公开只读链接） ----------
+function shareUrl(req, token) {
+  const pathPart = `/s/${token}`;
+  const host = req.get('x-forwarded-host') || req.get('host');
+  if (!host) return pathPart;
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+  return `${proto}://${host}${pathPart}`;
+}
+
+function publicTripPayload(trip) {
+  const owner = db.prepare('SELECT username FROM users WHERE id = ?').get(trip.user_id);
+  const members = db.prepare('SELECT id, name FROM trip_members WHERE trip_id = ? ORDER BY id').all(trip.id);
+  const expenses = db.prepare(
+    'SELECT id, payer, amount, category, note, spent_at FROM trip_expenses WHERE trip_id = ? ORDER BY spent_at DESC, id DESC'
+  ).all(trip.id);
+  const itinerary = db.prepare(
+    'SELECT id, day_no, content, sort FROM trip_itinerary WHERE trip_id = ? ORDER BY day_no, sort, id'
+  ).all(trip.id);
+  const photos = db.prepare(
+    'SELECT id, filename, original_name, created_at FROM trip_photos WHERE trip_id = ? ORDER BY id DESC'
+  ).all(trip.id);
+  const destinations = listDestinations(trip.id);
+  return {
+    title: trip.title,
+    origin_name: trip.origin_name,
+    dest_name: trip.dest_name,
+    destinations,
+    depart_date: trip.depart_date,
+    days: trip.days,
+    transport: trip.transport,
+    distance_km: trip.distance_km,
+    budget: trip.budget,
+    members: members.map((m) => m.name),
+    expenses,
+    settlement: settle(members, expenses),
+    itinerary,
+    photos,
+    ownerName: owner ? owner.username : '',
+  };
+}
+
+function findShareByToken(token) {
+  if (!token || typeof token !== 'string' || !/^[a-f0-9]{32,64}$/i.test(token)) return null;
+  return db.prepare(`
+    SELECT s.token AS share_token, s.created_at AS shared_at, t.*
+    FROM trip_shares s
+    JOIN trips t ON t.id = s.trip_id
+    WHERE s.token = ?
+  `).get(token);
+}
+
+router.get('/trips/:id/share', requireAuth, (req, res) => {
+  const trip = findOwnTrip(Number(req.params.id), req.auth.userId);
+  if (!trip) return notFound(res, '旅行项目不存在');
+  const row = db.prepare('SELECT token, created_at FROM trip_shares WHERE trip_id = ?').get(trip.id);
+  if (!row) return res.json({ enabled: false, token: null, url: null });
+  res.json({ enabled: true, token: row.token, url: shareUrl(req, row.token), created_at: row.created_at });
+});
+
+router.post('/trips/:id/share', requireAuth, requireWrite, (req, res) => {
+  const trip = findOwnTrip(Number(req.params.id), req.auth.userId);
+  if (!trip) return notFound(res, '旅行项目不存在');
+  let row = db.prepare('SELECT token, created_at FROM trip_shares WHERE trip_id = ?').get(trip.id);
+  if (!row) {
+    const token = crypto.randomBytes(24).toString('hex');
+    db.prepare('INSERT INTO trip_shares (token, trip_id) VALUES (?, ?)').run(token, trip.id);
+    row = db.prepare('SELECT token, created_at FROM trip_shares WHERE trip_id = ?').get(trip.id);
+  }
+  res.json({ enabled: true, token: row.token, url: shareUrl(req, row.token), created_at: row.created_at });
+});
+
+router.delete('/trips/:id/share', requireAuth, requireWrite, (req, res) => {
+  const trip = findOwnTrip(Number(req.params.id), req.auth.userId);
+  if (!trip) return notFound(res, '旅行项目不存在');
+  db.prepare('DELETE FROM trip_shares WHERE trip_id = ?').run(trip.id);
+  res.json({ ok: true, enabled: false });
+});
+
+router.get('/share/:token', (req, res) => {
+  const row = findShareByToken(req.params.token);
+  if (!row) return notFound(res, '分享不存在或已关闭');
+  const { share_token, shared_at, ...trip } = row;
+  res.json({ ...publicTripPayload(trip), token: share_token, shared_at });
+});
+
+router.get('/share/:token/photos/:filename', (req, res) => {
+  const row = findShareByToken(req.params.token);
+  if (!row) return notFound(res, '分享不存在或已关闭');
+  const filename = path.basename(String(req.params.filename || ''));
+  if (!filename || filename !== req.params.filename) return bad(res, '文件名无效');
+  const photo = db.prepare(
+    'SELECT id FROM trip_photos WHERE trip_id = ? AND filename = ?'
+  ).get(row.id, filename);
+  if (!photo) return notFound(res, '照片不存在');
+  const filePath = path.join(uploadRoot, String(row.id), filename);
+  if (!fs.existsSync(filePath)) return notFound(res, '照片文件不存在');
+  res.sendFile(filePath);
+});
+
 module.exports = router;

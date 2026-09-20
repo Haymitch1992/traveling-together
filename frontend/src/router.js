@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/profile', component: () => import('./views/ProfileView.vue') },
     { path: '/admin', component: () => import('./views/AdminView.vue') },
     { path: '/guestbook', component: () => import('./views/GuestbookView.vue') },
+    { path: '/s/:token', component: () => import('./views/ShareTripView.vue'), meta: { public: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 });

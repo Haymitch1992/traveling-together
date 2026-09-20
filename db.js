@@ -120,6 +120,12 @@ CREATE TABLE IF NOT EXISTS guestbook (
   ip TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS trip_shares (
+  token TEXT PRIMARY KEY,
+  trip_id INTEGER NOT NULL UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
 
 // 旧库迁移：cities 表补 user_id 列（归属由 auth.js 初始化时完成）
@@ -156,6 +162,7 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_trip_itinerary ON trip_itinerary(trip_id
 db.exec('CREATE INDEX IF NOT EXISTS idx_trip_photos ON trip_photos(trip_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_trip_destinations ON trip_destinations(trip_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_guestbook_created ON guestbook(created_at)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_trip_shares_trip ON trip_shares(trip_id)');
 
 // 旧库迁移：尚无 trip_destinations 行的旅行，写入单目的地
 const orphanTrips = db.prepare(`
