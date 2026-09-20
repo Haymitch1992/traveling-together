@@ -35,6 +35,11 @@
         <div class="panel-links">
           <router-link to="/trips" class="panel-link">旅行项目</router-link>
           <router-link to="/guestbook" class="panel-link">留言板</router-link>
+          <router-link
+            v-if="!authState.isGuest && authState.username === 'admin'"
+            to="/admin"
+            class="panel-link"
+          >后台管理</router-link>
         </div>
         <div v-if="authState.isGuest" class="guest-banner">游客模式 · 正在浏览 admin 的地图（只读）</div>
       </header>

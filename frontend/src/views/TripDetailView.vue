@@ -2,26 +2,61 @@
   <div class="trip-detail">
     <!-- 顶部导航 -->
     <nav class="top-nav">
-      <div class="top-nav-left">
-        <router-link to="/trips" class="nav-link">← 旅行项目</router-link>
-        <span class="nav-title">{{ trip ? trip.title : '旅行详情' }}</span>
-      </div>
-      <div class="user-info">
-        <span class="user-capsule user-link" title="编辑个人资料" @click="router.push('/profile')">{{ authState.isGuest ? '游客' : authState.username }}</span>
-        <el-button size="small" @click="logout">退出</el-button>
-      </div>
+      <template v-if="isMobile && editVisible">
+        <div class="top-nav-left">
+          <a href="#" class="nav-link" @click.prevent="closeEdit">← 返回</a>
+          <span class="nav-title">编辑项目</span>
+        </div>
+      </template>
+      <template v-else>
+        <div class="top-nav-left">
+          <router-link to="/trips" class="nav-link">← 旅行项目</router-link>
+          <span class="nav-title">{{ trip ? trip.title : '旅行详情' }}</span>
+        </div>
+        <div class="user-info">
+          <span class="user-capsule user-link" title="编辑个人资料" @click="router.push('/profile')">{{ authState.isGuest ? '游客' : authState.username }}</span>
+          <el-button size="small" @click="logout">退出</el-button>
+        </div>
+      </template>
     </nav>
 
     <!-- 游客只读横幅 -->
-    <div v-if="authState.isGuest" class="guest-banner">游客模式 · 正在浏览 admin 的旅行项目（只读）</div>
+    <div v-if="authState.isGuest && !(isMobile && editVisible)" class="guest-banner">游客模式 · 正在浏览 admin 的旅行项目（只读）</div>
 
-    <main v-if="trip" class="page-main">
+    <!-- 移动端：整页编辑（不用弹窗） -->
+    <main v-if="isMobile && editVisible" class="page-main edit-page">
+      <CreateTripForm
+        ref="editFormRef"
+        v-bind="editFormBind"
+        @home-input="onEditHomeInput"
+        @pick-home="pickEditHome"
+        @add-member="addEditMember"
+        @remove-member="(i) => editMembers.splice(i, 1)"
+        @add-quick="addEditQuick"
+        @dest-input="onEditDestInput"
+        @pick-dest="pickEditDest"
+        @add-dest-query="addEditDestFromQuery"
+        @remove-dest="removeEditDest"
+        @focus-dest="focusEditDest"
+        @transport-change="recalcEditDistance"
+        @update:homeQuery="editHomeQuery = $event"
+        @update:memberInput="editMemberInput = $event"
+        @update:budgetTier="editBudgetTier = $event"
+        @update:destQuery="editDestQuery = $event"
+      />
+      <div class="edit-page-actions">
+        <el-button size="large" round class="cancel-btn" @click="closeEdit">取消</el-button>
+        <el-button type="primary" size="large" round class="submit-btn" :loading="editSaving" @click="saveEdit">保存</el-button>
+      </div>
+    </main>
+
+    <main v-if="trip" v-show="!(isMobile && editVisible)" class="page-main">
       <!-- ① 基本信息 -->
       <el-card class="block-card" shadow="never">
         <template #header>
           <div class="card-title-row">
             <span class="card-title">基本信息</span>
-            <div v-if="!authState.isGuest">
+            <div v-if="!authState.isGuest" class="card-actions">
               <el-button size="small" @click="openEdit">编辑</el-button>
               <el-button size="small" type="danger" plain @click="removeTrip">删除项目</el-button>
             </div>
@@ -228,12 +263,19 @@
           </div>
         </template>
 
-        <div v-if="!authState.isGuest" class="inline-add-form">
-          <el-select v-model="itDay" style="width: 110px">
+        <div v-if="!authState.isGuest" class="inline-add-form itinerary-add-form">
+          <el-select v-model="itDay" class="it-day-select" style="width: 110px">
             <el-option v-for="d in dayOptions" :key="d" :label="`第 ${d} 天`" :value="d" />
           </el-select>
-          <el-input v-model="itContent" placeholder="行程内容，如：上午 西湖游船" maxlength="200" style="flex: 1" @keyup.enter="addItinerary" />
-          <el-button size="small" type="primary" @click="addItinerary">添加</el-button>
+          <el-input
+            v-model="itContent"
+            class="it-content-input"
+            placeholder="行程内容，如：上午 西湖游船"
+            maxlength="200"
+            style="flex: 1"
+            @keyup.enter="addItinerary"
+          />
+          <el-button size="small" type="primary" class="it-add-btn" @click="addItinerary">添加</el-button>
         </div>
       </el-card>
 
@@ -270,12 +312,12 @@
       <div class="empty-state">旅行项目不存在或无权访问</div>
     </main>
 
-    <!-- 编辑项目：复用新建表单模版 -->
+    <!-- 桌面端：弹窗编辑 -->
     <el-dialog
+      v-if="!isMobile"
       v-model="editVisible"
       title="编辑项目"
-      :width="isMobile ? '100%' : '880px'"
-      :fullscreen="isMobile"
+      width="880px"
       class="edit-dialog"
       @opened="onEditOpened"
       @closed="destroyEditMap"
@@ -300,7 +342,7 @@
         @update:destQuery="editDestQuery = $event"
       />
       <template #footer>
-        <el-button size="large" round @click="editVisible = false">取消</el-button>
+        <el-button size="large" round @click="closeEdit">取消</el-button>
         <el-button type="primary" size="large" round :loading="editSaving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
@@ -717,6 +759,15 @@ async function openEdit() {
     editHomeQuery.value = trip.value.origin_name || '';
   }
   editVisible.value = true;
+  if (isMobile.value) {
+    await nextTick();
+    setTimeout(() => { onEditOpened(); }, 80);
+  }
+}
+
+function closeEdit() {
+  editVisible.value = false;
+  destroyEditMap();
 }
 
 async function onEditOpened() {
@@ -764,8 +815,7 @@ async function saveEdit() {
     ElMessage.success('已保存');
     await reload();
     await loadCompanions();
-    editVisible.value = false;
-    destroyEditMap();
+    closeEdit();
   } catch (_) { /* api.js 已提示 */ } finally {
     editSaving.value = false;
   }
@@ -1112,6 +1162,8 @@ onBeforeUnmount(() => {
 .block-card :deep(.el-card__header) { padding: 14px 18px; border-bottom: 1px solid var(--brand-line); }
 .block-card :deep(.el-card__body) { padding: 14px 18px; }
 .card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.card-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card-actions :deep(.el-button) { margin-left: 0; }
 .card-title { font-size: 15px; font-weight: 700; color: var(--brand-ink); }
 .sub-label { font-size: 13px; color: var(--brand-sub); margin-bottom: 6px; }
 
@@ -1325,12 +1377,29 @@ onBeforeUnmount(() => {
 }
 .photo-cell:hover .photo-del { opacity: 1; }
 
-/* 编辑弹窗（内容复用 CreateTripForm） */
+/* 编辑弹窗 / 移动端整页 */
 .edit-dialog :deep(.el-dialog__body) { padding-top: 8px; }
 .edit-dialog :deep(.el-dialog__footer) {
   display: flex; gap: 10px; justify-content: flex-end;
 }
 .edit-dialog :deep(.el-dialog__footer .el-button) { min-width: 96px; }
+.edit-page-actions {
+  display: flex; gap: 12px; margin-top: 16px;
+  position: sticky; bottom: 0;
+  padding: 14px 0 calc(14px + var(--safe-bottom));
+  background: linear-gradient(180deg, transparent, var(--brand-cream) 28%);
+  z-index: 20;
+}
+.edit-page-actions .el-button {
+  flex: 1; min-height: 48px; font-size: 16px; font-weight: 700;
+}
+.edit-page-actions .cancel-btn {
+  border-width: 2px; border-color: #E8D4B0;
+  color: var(--brand-ink); background: #FFFDF8;
+}
+.edit-page-actions .submit-btn {
+  box-shadow: 0 4px 12px rgba(231, 111, 81, 0.3);
+}
 
 @media (max-width: 768px) {
   .top-nav { padding: 10px 12px; padding-top: calc(10px + var(--safe-top)); }
@@ -1341,14 +1410,8 @@ onBeforeUnmount(() => {
   .stat-card { min-width: calc(33% - 8px); }
   .photo-wall { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .photo-del { opacity: 1; }
-  .ai-actions :deep(.el-button),
-  .card-title-row :deep(.el-button) { margin-left: 0; }
-  .edit-dialog :deep(.el-dialog__footer) {
-    position: sticky; bottom: 0;
-    padding-bottom: calc(12px + var(--safe-bottom));
-    background: var(--brand-cream);
-  }
-  .edit-dialog :deep(.el-dialog__footer .el-button) { flex: 1; min-height: 48px; }
+  .ai-actions :deep(.el-button) { margin-left: 0; }
+  .card-actions { gap: 12px; }
 
   .settle-transfers { padding: 14px 12px 12px; border-radius: 16px; }
   .transfer-title { font-size: 18px; }
@@ -1373,6 +1436,29 @@ onBeforeUnmount(() => {
     margin-bottom: 4px;
     border-left-width: 2px;
     letter-spacing: 0.02em;
+  }
+  .itinerary-add-form {
+    gap: 8px;
+  }
+  .itinerary-add-form :deep(.it-day-select) {
+    width: 88px !important;
+    flex: 0 0 88px !important;
+    order: 1;
+  }
+  .itinerary-add-form :deep(.it-day-select .el-select__wrapper) {
+    min-height: 32px;
+    font-size: 13px;
+    padding: 0 8px;
+  }
+  .itinerary-add-form .it-add-btn {
+    order: 2;
+    margin-left: auto;
+  }
+  .itinerary-add-form :deep(.it-content-input) {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    order: 3;
   }
   .it-row {
     flex-direction: column;

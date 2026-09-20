@@ -74,6 +74,14 @@ function requireWrite(req, res, next) {
   next();
 }
 
+/** 仅真实登录的 admin 账号（游客挂在 admin 下，必须排除） */
+function requireAdmin(req, res, next) {
+  if (!req.auth || req.auth.isGuest || req.auth.username !== 'admin') {
+    return res.status(403).json({ error: '仅管理员可操作' });
+  }
+  next();
+}
+
 // ---------- 初始化：admin 账号 + 旧数据归属 + 过期会话清理 ----------
 function ensureAdmin() {
   let admin = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
@@ -100,4 +108,5 @@ module.exports = {
   clearCookie,
   requireAuth,
   requireWrite,
+  requireAdmin,
 };

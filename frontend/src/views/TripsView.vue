@@ -14,6 +14,11 @@
         </div>
         <div class="user-info">
           <router-link to="/guestbook" class="nav-link guestbook-link">留言板</router-link>
+          <router-link
+            v-if="!authState.isGuest && authState.username === 'admin'"
+            to="/admin"
+            class="nav-link guestbook-link"
+          >后台管理</router-link>
           <span class="current-user user-link" title="编辑个人资料" @click="router.push('/profile')">{{ authState.isGuest ? '游客' : authState.username }}</span>
           <el-button size="small" text @click="logout">退出</el-button>
         </div>
@@ -78,8 +83,17 @@
           >
             <div class="podium-aura" aria-hidden="true"></div>
             <div class="podium-avatar">
-              <img :src="animalIconFor(slot.item.name)" :alt="slot.item.name" draggable="false" />
+              <div class="podium-avatar-clip">
+                <img :src="animalIconFor(slot.item.name)" :alt="slot.item.name" draggable="false" />
+              </div>
               <span class="podium-badge">{{ slot.item.n }}</span>
+              <span
+                class="podium-medal"
+                :class="'medal-' + slot.place"
+                :aria-label="slot.medalLabel"
+              >
+                <em class="medal-face">{{ slot.place }}</em>
+              </span>
             </div>
             <div class="podium-place">{{ slot.ribbon }}</div>
             <div class="podium-name">{{ slot.item.name }}</div>
@@ -241,11 +255,17 @@ const shownRestCompanions = computed(() =>
 const podiumSlots = computed(() => {
   const list = podiumCompanions.value;
   const ribbons = { 1: '首席旅伴', 2: '常驻搭档', 3: '快乐跟班' };
+  const medals = { 1: '金牌', 2: '银牌', 3: '铜牌' };
   // 满 3 人时用领奖台顺序 2 · 1 · 3；不足则按名次横排
   const order = list.length >= 3 ? [2, 1, 3] : list.map((_, i) => i + 1);
   return order
     .filter((place) => list[place - 1])
-    .map((place) => ({ place, item: list[place - 1], ribbon: ribbons[place] }));
+    .map((place) => ({
+      place,
+      item: list[place - 1],
+      ribbon: ribbons[place],
+      medalLabel: medals[place],
+    }));
 });
 const quickPicks = computed(() =>
   companions.value.filter((c) => c.name !== '我' && !members.value.includes(c.name)));
@@ -854,29 +874,95 @@ onUnmounted(() => {
 .podium-avatar {
   position: relative; z-index: 1;
   width: 64px; height: 64px;
-  margin-bottom: 8px;
-  border-radius: 50%;
-  overflow: hidden;
+  margin-bottom: 10px;
 }
 .podium-card.place-1 .podium-avatar { width: 78px; height: 78px; }
-.podium-avatar img {
+.podium-avatar-clip {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 3px #fff, 0 4px 10px rgba(74, 64, 57, 0.16);
+}
+.podium-avatar-clip img {
   display: block; width: 100%; height: 100%;
   object-fit: cover; object-position: center center;
   border-radius: 50%;
   background: #FFFDF8;
-  box-shadow: 0 0 0 3px #fff, 0 4px 10px rgba(74, 64, 57, 0.16);
   animation: companion-bob 3.2s ease-in-out infinite;
   animation-delay: var(--delay, 0s);
 }
 .podium-badge {
-  position: absolute; right: -4px; bottom: -2px;
-  min-width: 22px; height: 22px; padding: 0 5px;
+  position: absolute; top: -4px; right: -6px;
+  min-width: 20px; height: 20px; padding: 0 5px;
   border-radius: 999px; border: 2px solid #fff;
   background: #E76F51; color: #fff;
-  font-size: 11px; font-weight: 800;
+  font-size: 10px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 2px 6px rgba(231, 111, 81, 0.35);
+  z-index: 2;
 }
+
+/* 金银铜奖牌 · 3D */
+.podium-medal {
+  position: absolute;
+  right: -8px; bottom: -6px;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  transform: perspective(80px) rotateX(18deg);
+  filter: drop-shadow(0 4px 3px rgba(74, 64, 57, 0.35));
+}
+.podium-medal::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 3px 4px rgba(255, 255, 255, 0.75),
+    inset 0 -4px 5px rgba(0, 0, 0, 0.28),
+    inset 2px 0 3px rgba(255, 255, 255, 0.35),
+    0 0 0 2px rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+.podium-medal::after {
+  content: '';
+  position: absolute;
+  top: 4px; left: 6px;
+  width: 10px; height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+  transform: rotate(-20deg);
+  pointer-events: none;
+}
+.medal-face {
+  position: relative; z-index: 1;
+  font-style: normal;
+  font-size: 13px; font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45), 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+.medal-1 {
+  background:
+    radial-gradient(circle at 32% 28%, #FFF8C8 0%, #FFE066 32%, #F5B800 62%, #C48900 100%);
+  border: 1.5px solid #A87200;
+}
+.medal-1 .medal-face { color: #7A5200; }
+.medal-2 {
+  background:
+    radial-gradient(circle at 32% 28%, #FFFFFF 0%, #E8E8E8 32%, #B8B8B8 62%, #8A8A8A 100%);
+  border: 1.5px solid #6E6E6E;
+}
+.medal-2 .medal-face { color: #4A4A4A; }
+.medal-3 {
+  background:
+    radial-gradient(circle at 32% 28%, #FFE0C2 0%, #E8A06A 32%, #C67B3A 62%, #8B4A22 100%);
+  border: 1.5px solid #6B3418;
+}
+.medal-3 .medal-face { color: #5C2E12; }
+.podium-card.place-1 .podium-medal {
+  width: 34px; height: 34px; right: -10px; bottom: -8px;
+}
+.podium-card.place-1 .medal-face { font-size: 15px; }
 .podium-place {
   font-size: 11px; font-weight: 700; color: #C48C28;
   letter-spacing: 0.06em; margin-bottom: 2px;
@@ -935,7 +1021,7 @@ onUnmounted(() => {
   50% { transform: translateY(-4px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .podium-card, .companion-chip, .podium-avatar img { animation: none; }
+  .podium-card, .companion-chip, .podium-avatar-clip img { animation: none; }
   .podium-card.place-1 { transform: none; }
 }
 
@@ -1012,6 +1098,10 @@ onUnmounted(() => {
   .podium-card { padding: 10px 6px 10px; border-radius: 18px 18px 14px 14px; }
   .podium-avatar { width: 52px; height: 52px; }
   .podium-card.place-1 .podium-avatar { width: 64px; height: 64px; }
+  .podium-medal { width: 26px; height: 26px; right: -6px; bottom: -4px; }
+  .podium-card.place-1 .podium-medal { width: 28px; height: 28px; }
+  .medal-face { font-size: 11px; }
+  .podium-card.place-1 .medal-face { font-size: 12px; }
   .podium-name { font-size: 13px; }
   .podium-card.place-1 .podium-name { font-size: 15px; }
   .podium-place { font-size: 10px; }

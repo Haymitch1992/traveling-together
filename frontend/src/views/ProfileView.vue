@@ -26,6 +26,14 @@
               <div class="account-email">{{ profile?.email || '未绑定邮箱' }}</div>
             </div>
           </div>
+          <el-button
+            v-if="isAdmin"
+            type="primary"
+            plain
+            round
+            class="admin-entry"
+            @click="$router.push('/admin')"
+          >后台管理</el-button>
         </el-card>
 
         <el-card class="profile-card">
@@ -49,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { get, put } from '../api';
 import { authState, fetchMe, logout } from '../auth';
@@ -57,6 +65,7 @@ import { authState, fetchMe, logout } from '../auth';
 const profile = ref(null);
 const pwd = ref({ old: '', next: '', confirm: '' });
 const saving = ref(false);
+const isAdmin = computed(() => !authState.isGuest && authState.username === 'admin');
 
 async function changePassword() {
   if (!pwd.value.old) return ElMessage.error('请输入原密码');
@@ -111,6 +120,7 @@ onMounted(async () => {
 }
 .account-name { font-size: 18px; font-weight: 700; }
 .account-email { font-size: 13px; color: var(--brand-sub); margin-top: 2px; }
+.admin-entry { margin-top: 16px; }
 
 @media (max-width: 768px) {
   .top-nav {

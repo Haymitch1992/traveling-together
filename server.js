@@ -157,6 +157,151 @@ app.put('/api/auth/password', auth.requireAuth, auth.requireWrite, (req, res) =>
   res.json({ ok: true });
 });
 
+// ---------- 后台管理（仅 admin） ----------
+app.get('/api/admin/stats', auth.requireAuth, auth.requireAdmin, (req, res) => {
+  const one = (sql, ...args) => db.prepare(sql).get(...args) || {};
+  const users = one(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN email IS NOT NULL AND email != '' THEN 1 ELSE 0 END) AS withEmail,
+      SUM(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) AS last7Days,
+      SUM(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) AS last30Days
+    FROM users
+  `);
+  const sessions = one(`
+    SELECT
+      COUNT(*) AS active,
+      SUM(CASE WHEN is_guest = 1 THEN 1 ELSE 0 END) AS guest
+    FROM sessions
+    WHERE expires_at >= datetime('now')
+  `);
+  const trips = one(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) AS last30Days,
+      COALESCE(SUM(days), 0) AS totalDays,
+      COALESCE(SUM(distance_km), 0) AS totalDistanceKm,
+      SUM(CASE WHEN budget IS NOT NULL THEN 1 ELSE 0 END) AS withBudget
+    FROM trips
+  `);
+  const cities = one(`
+    SELECT
+      (SELECT COUNT(*) FROM cities) AS total,
+      (SELECT COUNT(*) FROM visits) AS visits,
+      (SELECT COUNT(DISTINCT country) FROM cities WHERE country IS NOT NULL AND country != '') AS countries
+  `);
+  const content = one(`
+    SELECT
+      (SELECT COUNT(*) FROM trip_expenses) AS expenses,
+      (SELECT COALESCE(SUM(amount), 0) FROM trip_expenses) AS expenseAmount,
+      (SELECT COUNT(*) FROM trip_itinerary) AS itinerary,
+      (SELECT COUNT(*) FROM trip_photos) AS photos,
+      (SELECT COUNT(*) FROM guestbook) AS guestbook
+  `);
+  const topTripUsers = db.prepare(`
+    SELECT u.username, COUNT(t.id) AS tripCount
+    FROM users u
+    LEFT JOIN trips t ON t.user_id = u.id
+    GROUP BY u.id
+    HAVING tripCount > 0
+    ORDER BY tripCount DESC, u.id ASC
+    LIMIT 8
+  `).all();
+  const recentTrips = db.prepare(`
+    SELECT t.id, t.title, t.depart_date, t.days, t.created_at, u.username
+    FROM trips t
+    JOIN users u ON u.id = t.user_id
+    ORDER BY t.id DESC
+    LIMIT 8
+  `).all();
+  const monthly = db.prepare(`
+    WITH months AS (
+      SELECT strftime('%Y-%m', datetime('now', '-' || n || ' months')) AS month
+      FROM (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
+    )
+    SELECT
+      m.month,
+      (SELECT COUNT(*) FROM users u WHERE strftime('%Y-%m', u.created_at) = m.month) AS users,
+      (SELECT COUNT(*) FROM trips t WHERE strftime('%Y-%m', t.created_at) = m.month) AS trips
+    FROM months m
+    ORDER BY m.month ASC
+  `).all();
+
+  res.json({
+    users: {
+      total: users.total || 0,
+      withEmail: users.withEmail || 0,
+      last7Days: users.last7Days || 0,
+      last30Days: users.last30Days || 0,
+    },
+    sessions: {
+      active: sessions.active || 0,
+      guest: sessions.guest || 0,
+    },
+    trips: {
+      total: trips.total || 0,
+      last30Days: trips.last30Days || 0,
+      totalDays: trips.totalDays || 0,
+      totalDistanceKm: Math.round(Number(trips.totalDistanceKm) || 0),
+      withBudget: trips.withBudget || 0,
+    },
+    cities: {
+      total: cities.total || 0,
+      visits: cities.visits || 0,
+      countries: cities.countries || 0,
+    },
+    content: {
+      expenses: content.expenses || 0,
+      expenseAmount: Math.round((Number(content.expenseAmount) || 0) * 100) / 100,
+      itinerary: content.itinerary || 0,
+      photos: content.photos || 0,
+      guestbook: content.guestbook || 0,
+    },
+    topTripUsers,
+    recentTrips,
+    monthly,
+  });
+});
+
+app.get('/api/admin/users', auth.requireAuth, auth.requireAdmin, (req, res) => {
+  const users = db.prepare(`
+    SELECT u.id, u.username, u.email, u.created_at, u.home_name, u.avatar,
+           (SELECT COUNT(*) FROM trips t WHERE t.user_id = u.id) AS trip_count,
+           (SELECT COUNT(*) FROM cities c WHERE c.user_id = u.id) AS city_count
+    FROM users u
+    ORDER BY u.id ASC
+  `).all();
+  res.json(users.map((u) => ({
+    id: u.id,
+    username: u.username,
+    email: u.email || null,
+    created_at: u.created_at,
+    home_name: u.home_name || null,
+    hasAvatar: !!u.avatar,
+    isAdmin: u.username === 'admin',
+    tripCount: u.trip_count || 0,
+    cityCount: u.city_count || 0,
+  })));
+});
+
+app.put('/api/admin/users/:id/password', auth.requireAuth, auth.requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return bad(res, '用户无效');
+  const { newPassword } = req.body || {};
+  if (!newPassword || typeof newPassword !== 'string') return bad(res, '新密码必填');
+  if (newPassword.length < 6) return bad(res, '新密码至少 6 位');
+  const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(id);
+  if (!user) return notFound(res, '用户不存在');
+
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+    .run(auth.hashPassword(newPassword), user.id);
+  // 该用户全部会话失效，强制重新登录
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+  // 若重置的是当前 admin 自己，当前请求会话也已删，前端需重新登录
+  const selfReset = user.id === req.auth.userId;
+  res.json({ ok: true, username: user.username, selfReset });
+});
+
 // ---------- 业务 API（均需登录，写操作游客禁止） ----------
 app.get('/api/config', (req, res) => {
   res.json({ amapKey: config.amapKey || '', amapSecurityCode: config.amapSecurityCode || '' });
